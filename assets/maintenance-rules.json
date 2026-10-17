@@ -1,0 +1,134 @@
+{
+  "version": "1.0",
+  "note": "「定期整理柜子」的规则与依据单点数据源。每条规则必须说清：依据哪个字段、阈值多少、为什么这么定、建议做什么动作。脚本只做扫描与标记，任何移动/归档必须经用户逐条确认后才执行。",
+  "principle": [
+    "整理规则不是脚本拍脑袋定的，每条都要说清「依据哪个字段」和「为什么是这个阈值」",
+    "脚本默认只**报告**和**标记**，绝不自动移动或删除用户的文件",
+    "阈值与开关由用户改——`jkkb.py maintain --set <规则ID>=<天数>` 或直接改本文件",
+    "执行前必须 `--confirm`，未确认的 `--apply` 会被脚本直接拒绝"
+  ],
+  "cadence": {
+    "weekly": {
+      "rules": [
+        "M01"
+      ],
+      "desc": "每周一次，5 分钟：清空收件箱"
+    },
+    "monthly": {
+      "rules": [
+        "M02",
+        "M03",
+        "M04"
+      ],
+      "desc": "每月一次，20 分钟：复审、低置信度、断链"
+    },
+    "quarterly": {
+      "rules": [
+        "M05",
+        "M06",
+        "M07",
+        "M08"
+      ],
+      "desc": "每季度一次，1 小时：草稿、项目归档、废弃清理"
+    },
+    "note": "节奏是建议不是强制。跑 `maintain --plan` 会显示每条规则命中多少项，命中多就提前做。"
+  },
+  "rules": [
+    {
+      "id": "M01",
+      "name": "收件箱超期未归位",
+      "basis": "文件位于 `01_收件箱` 下，且创建/最后修改距今超过阈值",
+      "threshold_days": 7,
+      "why": "收件箱是入口不是仓库。堆过一周，它就从「待处理」变成「第二个垃圾堆」，并连带毁掉整套分类的公信力",
+      "action": "report",
+      "target": "由你判定后归到对应业务目录（脚本不代劳——归到哪是内容判断，不是规则能定的）；判定不了就留在收件箱并写明卡在哪",
+      "confirm_required": true,
+      "enabled": true
+    },
+    {
+      "id": "M02",
+      "name": "复审周期到期",
+      "basis": "frontmatter 的 `review` 字段（如 180d / 90d）与 `updated` 字段比较",
+      "threshold_days": null,
+      "why": "`review` 字段写了没人看就等于没写。到期不复核，知识会静悄悄过期却仍被当作有效",
+      "action": "flag",
+      "target": "复核后更新 `updated` 与 `status`；失效的改 `deprecated` 并写明替代编号",
+      "confirm_required": false,
+      "enabled": true,
+      "threshold_note": "阈值取每条笔记自己的 review 值，不是全局天数"
+    },
+    {
+      "id": "M03",
+      "name": "低置信度长期未验证",
+      "basis": "`confidence: 低` 且距创建超过阈值，且仍未被任何实验编号引用",
+      "threshold_days": 90,
+      "why": "低档意味着「没来源、没验证」。放三个月还没升级，大概率是当年的随口一猜，继续留着会被误当成结论",
+      "action": "report",
+      "target": "补来源升级为中档、开一条验证实验、或明确降级并归档",
+      "confirm_required": true,
+      "enabled": true
+    },
+    {
+      "id": "M04",
+      "name": "溯源链断链",
+      "basis": "`ref_hypothesis` / `ref_experiment` 指向的编号在库里不存在",
+      "threshold_days": null,
+      "why": "断链等于溯源链断了。多年后要从决策追回原始访谈，走到这一环就走不通了",
+      "action": "report",
+      "target": "补齐编号引用，或确认该引用已失效并清空字段（不要留一个指向空气的编号）",
+      "confirm_required": false,
+      "enabled": true
+    },
+    {
+      "id": "M05",
+      "name": "草稿长期未推进",
+      "basis": "`status: draft` 且距最后更新超过阈值",
+      "threshold_days": 180,
+      "why": "半年没动的草稿基本不会再做。留着会稀释检索结果，让人分不清「在写」和「放弃了」",
+      "action": "report",
+      "target": "补完并转 active、明确放弃后归档、或直接删（脚本不代删）",
+      "confirm_required": true,
+      "enabled": true
+    },
+    {
+      "id": "M06",
+      "name": "项目已结束未归档",
+      "basis": "项目目录下存在标记为结束/结案的标记，或项目首页 `status` 为 `done` 且距今超过阈值",
+      "threshold_days": 90,
+      "why": "活跃区只放活跃的事。结束的项目继续占着「正在做」的位置，会让人看不清当前真正重要的是什么",
+      "action": "move",
+      "target": "移入 `12_归档与历史/01_已结束项目`，必须留原始位置、归档时间、归档原因、继任版本链接",
+      "confirm_required": true,
+      "enabled": true
+    },
+    {
+      "id": "M07",
+      "name": "已废弃内容可归档",
+      "basis": "`status: deprecated` 且距最后更新超过阈值",
+      "threshold_days": 180,
+      "why": "废弃不等于删除——它是「当年为什么放弃」的证据。但半年后可以从活跃区挪走，用标签保留可查性",
+      "action": "move",
+      "target": "移入 `12_归档与历史/02_停用的知识与模型`，保留编号不回收",
+      "confirm_required": true,
+      "enabled": true
+    },
+    {
+      "id": "M08",
+      "name": "缺置信度标记",
+      "basis": "frontmatter 没有 `confidence` 字段，或 `confidence: 低` 但 `conf_why` 为空",
+      "threshold_days": null,
+      "why": "没有置信度，三年后你分不清哪些是验证过的结论、哪些只是当年一猜——这是整套库最容易失守的一环",
+      "action": "flag",
+      "target": "按《置信度标准》补 `confidence` / `conf_src` / `conf_why`",
+      "confirm_required": false,
+      "enabled": true
+    }
+  ],
+  "archive_required_fields": [
+    "原始位置",
+    "归档时间",
+    "归档原因",
+    "继任版本链接"
+  ],
+  "archive_note": "归档必须留这四项，缺一项就不许搬——搬了却说不清从哪来、为什么搬，等于制造新的悬案。"
+}

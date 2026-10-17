@@ -1,0 +1,12 @@
+# 忽略 docs 目录及其所有内容
+docs/
+
+# macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.TemporaryItems
+.fseventsd
