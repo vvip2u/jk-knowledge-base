@@ -16,7 +16,7 @@
 - **doctor（体检修复）**：22 项只读检查 + 16 项修复，诊断对损坏免疫（单 check 失败降级，不中断整体）；修复要求「无进行中 run」+ 预览 + 确认；幂等；`.jkkb/doctor/last.json` 由宿主审计独占写入
 - **仪表盘**：`GET /dashboard` 真实数据（条目数/顶层目录分布/最近入库/运行状态/今日 token/最近整理），未配根目录时显示骨架而非假数据
 - **设置**：知识库根目录选择 + 每次更新风险提示 + 保存按钮；开关常驻
-- **文档布局约定**：根目录只放"能照着执行"的动作指南（README / DOCTOR / PUBLISHING / VERIFY-WINDOWS），`docs/` 只放设计图纸与决策记录（不进 npm 包、运行时零依赖），并由 `tools/pack-check.mjs` 机器校验这条约定
+- **文档布局约定**：随包只带"能照着执行"的动作指南（README / DOCTOR / VERIFY-WINDOWS / CHANGELOG），设计记录不进包、运行时零依赖，由 `tools/pack-check.mjs` 机器校验
 
 ### 安全与边界
 - 只写授权根目录内，路径守卫单一来源（`assertWritable*`），守卫不可用即 fail-closed
@@ -25,4 +25,4 @@
 
 ### 跨平台
 - 路径包含判定用 `path.relative`（不用字符串前缀）、win32 `\\?\` / UNC 归一化、`replaceFile` 重试、`sanitizeSegment`、`assertPathLength`（win32 > 240 → `PATH_TOO_LONG`）、BOM/CRLF 容错
-- 三平台测试矩阵见 `.github/workflows/test.yml`；Windows 真机清单见 `docs/windows-verification.md`
+- 三平台测试矩阵见 `.github/workflows/test.yml`；Windows 真机清单见 `VERIFY-WINDOWS.md`

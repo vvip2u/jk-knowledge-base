@@ -91,16 +91,12 @@ dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base-1.0.0.tgz
 
 ## 文档地图
 
-**动作指南在根目录**（能照着一步一步执行的东西）；**设计图纸在 [`docs/`](docs/)**（为什么这么设计、当时的取舍）。
-
 | 文件 | 内容 |
 |---|---|
 | [`README.md`](README.md) | 本文件：功能、安装、使用、故障排查、自检 |
 | [`DOCTOR.md`](DOCTOR.md) | 体检修复操作指南：三个入口、22 检查 / 16 修复、隔离区怎么处理 |
-| [`PUBLISHING.md`](PUBLISHING.md) | 打包与发布：自检三连、git/tarball/npm 三条路线、版本纪律 |
 | [`VERIFY-WINDOWS.md`](VERIFY-WINDOWS.md) | Windows 真机验证清单（CI 覆盖不到的 ACL / UNC / 长路径） |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本变更记录 |
-| [`docs/`](docs/README.md) | 设计图纸索引：监督恢复方案、存储迁移、doctor 设计、P2 能力清单 |
 
 ## 设计约束（有意为之）
 

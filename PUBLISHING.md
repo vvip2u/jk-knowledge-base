@@ -1,5 +1,7 @@
 # 打包与发布（Git / tarball / npm）
 
+> 维护者文档：**不随 npm 包分发**（`package.json` 的 `files` 不含本文件），使用者看不到。
+
 > 目标：把插件从"工作区里的开发目录"变成**独立干净、可被别人装**的产物。
 
 ## 0. 现状（已就绪的部分）
@@ -81,4 +83,4 @@ dsh plugin --profile desktop add ./jk-knowledge-base-1.0.0.tgz
 ## 7. 跨平台验证
 
 `.github/workflows/test.yml` 已在 `ubuntu / macos / windows` × `node 22 / 24` 六个组合上跑 5 套测试 + pack-check。
-Windows 真机的人工清单仍是 `docs/windows-verification.md`（CI 覆盖不了 ACL / UNC / 长路径这些系统行为）。
+Windows 真机的人工清单仍是 `VERIFY-WINDOWS.md`（CI 覆盖不了 ACL / UNC / 长路径这些系统行为）。

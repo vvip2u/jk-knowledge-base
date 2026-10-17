@@ -110,9 +110,15 @@ ok('dsh 清单存在', !!(pkg.dsh && pkg.dsh.client && pkg.dsh.engines && pkg.ds
 ok('cordis.patch.yml 在包内', selected.has('cordis.patch.yml'));
 ok('LICENSE / README / CHANGELOG 在包内', ['LICENSE', 'README.md', 'CHANGELOG.md'].every((f) => selected.has(f)));
 // 根目录 = 动作指南（能照着执行），必须随包分发；docs/ = 设计图纸，刻意不进包
-const ROOT_GUIDES = ['README.md', 'DOCTOR.md', 'PUBLISHING.md', 'VERIFY-WINDOWS.md', 'CHANGELOG.md', 'LICENSE'];
-ok('根级动作指南齐全且在包内', ROOT_GUIDES.every((f) => selected.has(f)), ROOT_GUIDES.filter((f) => !selected.has(f)).join('、'));
+const ROOT_GUIDES = ['README.md', 'DOCTOR.md', 'VERIFY-WINDOWS.md', 'CHANGELOG.md', 'LICENSE'];
+ok('随包动作指南齐全', ROOT_GUIDES.every((f) => selected.has(f)), ROOT_GUIDES.filter((f) => !selected.has(f)).join('、'));
+ok('仓库里保留了维护者文档 PUBLISHING.md', allFiles.includes('PUBLISHING.md'));
 ok('docs/ 设计图纸不进包（运行时不需要）', ![...selected].some((f) => f.startsWith('docs/')), [...selected].filter((f) => f.startsWith('docs/')).join('、'));
+ok('PUBLISHING.md 是维护者文档，不随包分发', !selected.has('PUBLISHING.md'));
+// 随包文档里不得出现设计文档目录的任何痕迹（使用者视角看不到它）
+const SHIPPED_DOCS = ['README.md', 'DOCTOR.md', 'VERIFY-WINDOWS.md', 'CHANGELOG.md'];
+const docLeaks = SHIPPED_DOCS.filter((f) => selected.has(f) && /docs\//.test(readFileSync(path.join(ROOT, f), 'utf8')));
+ok('随包文档不提设计文档目录', docLeaks.length === 0, docLeaks.join('、'));
 // docs/ 若存在必须有索引，且每份文档都被索引登记（防止新增文档漏登记）
 const docFiles = allFiles.filter((f) => f.startsWith('docs/') && f.endsWith('.md') && f !== 'docs/README.md');
 if (docFiles.length) {
