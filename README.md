@@ -1,4 +1,4 @@
-# jk-knowledge-base
+# JK知识库
 
 DSH（DeepSeek Harness）Web GUI 知识库插件。
 
