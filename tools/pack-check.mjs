@@ -109,6 +109,22 @@ ok('assets/ 资源非空（specs / templates 至少各 5 个）',
 ok('dsh 清单存在', !!(pkg.dsh && pkg.dsh.client && pkg.dsh.engines && pkg.dsh.bundle), JSON.stringify(Object.keys(pkg.dsh || {})));
 ok('cordis.patch.yml 在包内', selected.has('cordis.patch.yml'));
 ok('LICENSE / README / CHANGELOG 在包内', ['LICENSE', 'README.md', 'CHANGELOG.md'].every((f) => selected.has(f)));
+// 根目录 = 动作指南（能照着执行），必须随包分发；docs/ = 设计图纸，刻意不进包
+const ROOT_GUIDES = ['README.md', 'DOCTOR.md', 'PUBLISHING.md', 'VERIFY-WINDOWS.md', 'CHANGELOG.md', 'LICENSE'];
+ok('根级动作指南齐全且在包内', ROOT_GUIDES.every((f) => selected.has(f)), ROOT_GUIDES.filter((f) => !selected.has(f)).join('、'));
+ok('docs/ 设计图纸不进包（运行时不需要）', ![...selected].some((f) => f.startsWith('docs/')), [...selected].filter((f) => f.startsWith('docs/')).join('、'));
+// docs/ 若存在必须有索引，且每份文档都被索引登记（防止新增文档漏登记）
+const docFiles = allFiles.filter((f) => f.startsWith('docs/') && f.endsWith('.md') && f !== 'docs/README.md');
+if (docFiles.length) {
+  const index = readFileSync(path.join(ROOT, 'docs/README.md'), 'utf8');
+  const unindexed = docFiles.filter((f) => !index.includes(f.split('/').pop()));
+  ok('docs/ 每份文档都在索引里登记', unindexed.length === 0, unindexed.join('、'));
+  ok('docs/ 内部链接不指向不存在的文件', (() => {
+    const links = [...index.matchAll(/\]\(([^)]+\.md)\)/g)].map((m) => m[1]);
+    const missingLinks = links.filter((rel) => !allFiles.includes('docs/' + rel.replace(/^\.\//, '')));
+    return missingLinks.length === 0;
+  })());
+}
 ok('入口文件在包内', selected.has('index.js') && selected.has('client.js'));
 
 // ── 6. 体积上限（防止误把测试产物或数据带进包）

@@ -1,6 +1,9 @@
-# JK知识库
+# jk-knowledge-base
 
 DSH（DeepSeek Harness）Web GUI 知识库插件。
+
+> **仓库**：<https://github.com/vvip2u/jk-knowledge-base>
+> ｜ 安装见下方「[安装](#安装)」 ｜ 出问题先看「[故障排查](#故障排查)」 ｜ 库坏了看 [`DOCTOR.md`](DOCTOR.md)
 
 > **自用声明**：本项目是作者**自用**的小工具，顺手开源给小范围的朋友共用，
 > 按 **MIT** 协议授权，你可以自由使用、修改、再分发。
@@ -47,11 +50,11 @@ DSH 的「添加插件」（**设置 → 插件 → 添加插件**）接受四�
 
 ### 方式一：图形界面
 
-1. 把本目录放到本机 —— 直接拷贝、或 `git clone`、或用解压后的压缩包。
+1. 把本目录放到本机 —— `git clone https://github.com/vvip2u/jk-knowledge-base.git`、直接拷贝、或用解压后的压缩包。
 2. 打开 DSH → **设置 → 插件 → 添加插件**。
 3. 填入下列任意一种，然后点「安装」：
    - 本地目录的绝对路径，例如 `/绝对/路径/jk-knowledge-base`
-   - Git 地址，例如 `https://github.com/vvip2u/jk-knowledge-base.git`
+   - Git 地址，例如 `https://github.com/vvip2u/jk-knowledge-base`（或带版本：`https://github.com/vvip2u/jk-knowledge-base#v1.0.0`）
    - 你打好的压缩包路径，例如 `/绝对/路径/jk-knowledge-base-1.0.0.tgz`
 4. **重启 DSH 图形界面**（bundle 组成只在启动时装配）。
 
@@ -64,7 +67,9 @@ dsh plugin --profile desktop add link:/绝对/路径/jk-knowledge-base
 # 本地目录，拷贝安装：装完与源目录无关
 dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base
 
-# Git 仓库
+# 从 GitHub 装（推荐带 tag 锁版本，避免静默拿到未发布改动）
+dsh plugin --profile desktop add github:vvip2u/jk-knowledge-base#v1.0.0
+# 或直接给 https 地址（不带 tag = 跟随默认分支）
 dsh plugin --profile desktop add https://github.com/vvip2u/jk-knowledge-base.git
 
 # 压缩包
@@ -79,9 +84,23 @@ dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base-1.0.0.tgz
 
 1. 打开 **设置 → JK知识库**，把「启动JK知识库」拨到**开**。
 2. 侧边栏「插件」正下方出现「**知识库**」，点它进入主页面。
-3. 左栏上部选「仪表盘」，右栏显示仪表盘（示例数据）；左栏下部是「执行任务」，
-   默认 3 条，超过时下面有「更多」，点开看全部、再点「收起」回到 3 条。
+3. 左栏上部选「仪表盘」，右栏显示**真实数据**（条目数、最近入库、运行状态、最近整理）；
+   左栏下部「执行任务」显示**你真实跑过的任务**，默认 3 条，超过时下面有「更多」，
+   点开看全部、再点「收起」回到 3 条。未配根目录时两处都是骨架占位，不会出现假数据。
 4. 想关掉入口：回到设置页把开关拨回**关**，菜单与页面立即消失。
+
+## 文档地图
+
+**动作指南在根目录**（能照着一步一步执行的东西）；**设计图纸在 [`docs/`](docs/)**（为什么这么设计、当时的取舍）。
+
+| 文件 | 内容 |
+|---|---|
+| [`README.md`](README.md) | 本文件：功能、安装、使用、故障排查、自检 |
+| [`DOCTOR.md`](DOCTOR.md) | 体检修复操作指南：三个入口、22 检查 / 16 修复、隔离区怎么处理 |
+| [`PUBLISHING.md`](PUBLISHING.md) | 打包与发布：自检三连、git/tarball/npm 三条路线、版本纪律 |
+| [`VERIFY-WINDOWS.md`](VERIFY-WINDOWS.md) | Windows 真机验证清单（CI 覆盖不到的 ACL / UNC / 长路径） |
+| [`CHANGELOG.md`](CHANGELOG.md) | 版本变更记录 |
+| [`docs/`](docs/README.md) | 设计图纸索引：监督恢复方案、存储迁移、doctor 设计、P2 能力清单 |
 
 ## 设计约束（有意为之）
 
