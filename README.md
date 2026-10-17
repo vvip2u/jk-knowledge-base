@@ -51,7 +51,7 @@ DSH 的「添加插件」（**设置 → 插件 → 添加插件**）接受四�
 2. 打开 DSH → **设置 → 插件 → 添加插件**。
 3. 填入下列任意一种，然后点「安装」：
    - 本地目录的绝对路径，例如 `/绝对/路径/jk-knowledge-base`
-   - Git 地址，例如 `https://github.com/<你的账号>/jk-knowledge-base.git`
+   - Git 地址，例如 `https://github.com/vvip2u/jk-knowledge-base.git`
    - 你打好的压缩包路径，例如 `/绝对/路径/jk-knowledge-base-1.0.0.tgz`
 4. **重启 DSH 图形界面**（bundle 组成只在启动时装配）。
 
@@ -65,7 +65,7 @@ dsh plugin --profile desktop add link:/绝对/路径/jk-knowledge-base
 dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base
 
 # Git 仓库
-dsh plugin --profile desktop add https://github.com/<你的账号>/jk-knowledge-base.git
+dsh plugin --profile desktop add https://github.com/vvip2u/jk-knowledge-base.git
 
 # 压缩包
 dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base-1.0.0.tgz
