@@ -18,7 +18,7 @@ DSH（DeepSeek Harness）Web GUI 知识库插件。
 - 打开开关后，主界面侧边栏「**插件**」行的**正下方**多出一行「**知识库**」菜单。
 - 关掉开关，该菜单与主区域页面**一起移除**（两条席位注册成对 dispose），
   再打开会重新出现，不会留下重复注册。
-- 设置页**右下角**显示插件名 + 版本号：`JK知识库 v1.0.0`。
+- 设置页**右下角**显示插件名 + 版本号：`JK知识库 v1.1.1`。
 - 「知识库」主页面分左右两栏：
   - **左栏上部**：菜单列表（首版只有「仪表盘」一条）。菜单是**数组驱动**的，
     将来加条目只改那个数组。
@@ -37,7 +37,7 @@ DSH（DeepSeek Harness）Web GUI 知识库插件。
 
 | 项 | 值 |
 |---|---|
-| 插件版本 | **1.0.0**（`client.js` 的 `PLUGIN_VERSION` 与 `package.json` 的 `version` 同一个值） |
+| 插件版本 | **1.1.1**（`client.js` 的 `PLUGIN_VERSION` 与 `package.json` 的 `version` 同一个值） |
 | DSH 版本 | `dsh.engines.dsh` 声明 `>=0.2.0-rc.2`（**仅作声明**，宿主不强制校验） |
 | 宿主平台 | Web GUI（桌面版与网页版共用同一套渲染层） |
 | 运行时依赖 | **无**。浏览器半只 `require('react')`，不 `require` 任何 `@deepseek-ai/*` 包 |
@@ -54,8 +54,8 @@ DSH 的「添加插件」（**设置 → 插件 → 添加插件**）接受四�
 2. 打开 DSH → **设置 → 插件 → 添加插件**。
 3. 填入下列任意一种，然后点「安装」：
    - 本地目录的绝对路径，例如 `/绝对/路径/jk-knowledge-base`
-   - Git 地址，例如 `https://github.com/vvip2u/jk-knowledge-base`（或带版本：`https://github.com/vvip2u/jk-knowledge-base#v1.0.0`）
-   - 你打好的压缩包路径，例如 `/绝对/路径/jk-knowledge-base-1.0.0.tgz`
+   - Git 地址，例如 `https://github.com/vvip2u/jk-knowledge-base`（或带版本：`https://github.com/vvip2u/jk-knowledge-base#v1.1.1`）
+   - 你打好的压缩包路径，例如 `/绝对/路径/jk-knowledge-base-1.1.1.tgz`
 4. **重启 DSH 图形界面**（bundle 组成只在启动时装配）。
 
 ### 方式二：命令行
@@ -68,12 +68,12 @@ dsh plugin --profile desktop add link:/绝对/路径/jk-knowledge-base
 dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base
 
 # 从 GitHub 装（推荐带 tag 锁版本，避免静默拿到未发布改动）
-dsh plugin --profile desktop add github:vvip2u/jk-knowledge-base#v1.0.0
+dsh plugin --profile desktop add github:vvip2u/jk-knowledge-base#v1.1.1
 # 或直接给 https 地址（不带 tag = 跟随默认分支）
 dsh plugin --profile desktop add https://github.com/vvip2u/jk-knowledge-base.git
 
 # 压缩包
-dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base-1.0.0.tgz
+dsh plugin --profile desktop add /绝对/路径/jk-knowledge-base-1.1.1.tgz
 ```
 
 > 图形界面用的 profile 名是 **`desktop`**。装到别的 profile（比如 `web`）当前界面看不到。
@@ -217,7 +217,7 @@ node tools/smoke-test.mjs   # 或 npm run smoke
 - 菜单数组长度与首项为「仪表盘」；
 - 关闭状态不注册 `sidebar.panellist` 与 `main`；打开后两者都在；关闭后两者都被 dispose；
   再打开不产生重复注册；刷新后按已保存状态恢复；
-- 设置页 Switch 的文案 / `aria-checked` / 右下角 `JK知识库 v1.0.0`；
+- 设置页 Switch 的文案 / `aria-checked` / 右下角 `JK知识库 v1.1.1`；
 - 主页面渲染（菜单数组、默认 3 条任务、更多按钮、4 张统计卡、最近入库、运行状态、示例数据标注、
   占位页）；
 - CSS 无硬编码颜色、类名统一 `jk-kb-` 前缀。

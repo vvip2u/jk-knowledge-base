@@ -1,6 +1,6 @@
 {
   "name": "jk-knowledge-base",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "description": "DSH Web GUI 知识库插件 / a DSH Web GUI knowledge-base plugin：在设置里新增「JK知识库」子菜单与「启动JK知识库」开关，开启后侧边栏「插件」下方出现「知识库」入口，主页面为左栏菜单 + 执行任务、右栏内容的两栏布局；仪表盘/任务/业务专家/整理报告全部来自宿主真实数据，内置 47 条技能目录、8 条整理规则、16 项体检修复（doctor）与运行可溯源（run/step/token/acceptance）。",

@@ -10,7 +10,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export const PLUGIN_ID = 'jk-knowledge-base';
-export const PLUGIN_VERSION = '1.0.0';
+export const PLUGIN_VERSION = '1.1.1';
 export const SETTINGS_FILE_NAME = 'settings.json';
 
 // 风险确认记录：版本号 + 确认文本哈希，二者一起证明"用户确实看过这一版提示"。

@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-import { describeErrno, hashAckText, RISK_ACK_TEXT, RISK_ACK_VERSION, createSettingsStore } from './config.js';
+import { describeErrno, hashAckText, PLUGIN_VERSION, RISK_ACK_TEXT, RISK_ACK_VERSION, createSettingsStore } from './config.js';
 import { evaluateRoot, getTopLevelDirs, hasVault, VAULT_DIR_NAME } from './root-policy.js';
 import { resolveRoute, runHostPreflight, serviceOf } from './orchestrator.js';
 import * as checkpoint from './checkpoint.js';
@@ -61,6 +61,8 @@ export const ROUTE_PATHS = {
   skillCalls: ROUTE_PREFIX + '/skill-calls',
   ledgerCalendar: ROUTE_PREFIX + '/ledger/calendar',
   ledgerDay: ROUTE_PREFIX + '/ledger/day',
+  files: ROUTE_PREFIX + '/files',
+  file: ROUTE_PREFIX + '/file',
 };
 
 function requestUrl(req) {
@@ -189,7 +191,7 @@ export function createHandlers(options) {
   // 顶层目录真源：显式注入优先，否则向引擎预设投影（不在本文件复制目录名）。
   const injectedDirs = Array.isArray(opts.topLevelDirs) ? opts.topLevelDirs : null;
   const policyOptions = opts.policyOptions || {};
-  const version = typeof opts.version === 'string' ? opts.version : '1.0.0';
+  const version = typeof opts.version === 'string' ? opts.version : PLUGIN_VERSION;
   const runs = opts.runs || null;
   // 诊断用：ctx（看 subagents / route）与工具注册结果（成功名单 + 失败清单）。
   const ctx = opts.ctx || null;
@@ -497,7 +499,9 @@ export function createHandlers(options) {
         fail(res, 503, 'doctor-unavailable', 'doctor 引擎不可用');
         return;
       }
-      const diagnosis = await api.diagnose({ root: null });
+      // deps.settingsPath：诊断必须读 handler 持有的那份 settings（测试注入的 store 文件），
+      // 否则 createContext 回落到真实 ~/.dsh 的设置，未配置根目录会被误判成已配置（CFG-01 ok）。
+      const diagnosis = await api.diagnose({ root: null, deps: { settingsPath: store.file } });
       sendJson(res, 200, Object.assign({}, diagnosis, { lastRepair: null }));
       return;
     }
@@ -508,7 +512,7 @@ export function createHandlers(options) {
     }
     let diagnosis;
     try {
-      diagnosis = await api.diagnose({ root: root });
+      diagnosis = await api.diagnose({ root: root, deps: { settingsPath: store.file } });
     } catch (err) {
       fail(res, 500, (err && err.code) || 'doctor-failed', String(err && err.message ? err.message : err));
       return;
@@ -560,12 +564,12 @@ export function createHandlers(options) {
     const startedAt = Date.now();
     let diagnosis = null;
     try {
-      diagnosis = await api.diagnose({ root: root });
+      diagnosis = await api.diagnose({ root: root, deps: { settingsPath: store.file } });
     } catch (err) { diagnosis = null; }
 
     let repair;
     try {
-      repair = await api.repair({ root: root, repairIds: repairIds, dryRun: dryRun });
+      repair = await api.repair({ root: root, repairIds: repairIds, dryRun: dryRun, deps: { settingsPath: store.file } });
     } catch (err) {
       if (err && err.code === 'RUN_IN_PROGRESS') {
         sendJson(res, 409, {
@@ -1065,6 +1069,173 @@ export function createHandlers(options) {
     sendJson(res, 200, { ok: true, runs: page.runs, nextBefore: page.nextBefore });
   }
 
+  // ── 文件管理（文件树 / 目录列表 / 文件预览）──
+  // 把相对目录解析成 root 内的绝对路径；越界（..、绝对路径、软链出圈）一律 400。
+  function resolveInsideRoot(root, rel) {
+    const relPath = typeof rel === 'string' ? rel : '';
+    const abs = path.resolve(root, '.' + path.sep + relPath);
+    const normalizedRoot = path.resolve(root);
+    if (abs !== normalizedRoot && abs.indexOf(normalizedRoot + path.sep) !== 0) {
+      return null;
+    }
+    return abs;
+  }
+
+  // 反向规范化：绝对路径 → 相对 root 的 posix 风格相对路径（root 本身是 ''）。
+  function relInsideRoot(root, abs) {
+    const normalizedRoot = path.resolve(root);
+    if (abs === normalizedRoot) return '';
+    return path.relative(normalizedRoot, abs).split(path.sep).join('/');
+  }
+
+  const FILE_TEXT_EXTS = ['.md', '.markdown', '.txt', '.json', '.csv', '.log', '.yaml', '.yml', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.css', '.html', '.xml', '.ini', '.toml', '.env', '.sh', '.py'];
+  const FILE_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+  const FILE_TEXT_MAX_BYTES = 2 * 1024 * 1024;
+
+  // GET /files?dir=<rel> —— 列目录：folders 在前、各自按名排序，files 带 ext/size/mtimeMs。
+  async function filesList(req, res) {
+    if (req.method !== 'GET') {
+      fail(res, 405, 'method-not-allowed', '仅支持 GET');
+      return;
+    }
+    const root = currentRoot();
+    if (!root) {
+      fail(res, 409, 'root-missing', '尚未配置知识库根目录');
+      return;
+    }
+    const url = requestUrl(req);
+    const relDir = url ? (url.searchParams.get('dir') || '') : '';
+    const absDir = resolveInsideRoot(root, relDir);
+    if (!absDir) {
+      fail(res, 400, 'dir-out-of-root', '目录超出知识库根目录范围');
+      return;
+    }
+    let stats;
+    try {
+      stats = io.statSync(absDir);
+    } catch (err) {
+      stats = null;
+    }
+    if (!stats || !stats.isDirectory()) {
+      fail(res, 404, 'dir-not-found', '目录不存在：' + relDir);
+      return;
+    }
+    let dirents;
+    try {
+      dirents = io.readdirSync(absDir, { withFileTypes: true });
+    } catch (err) {
+      fail(res, 500, 'dir-read-failed', '目录读取失败：' + describeErrno(err));
+      return;
+    }
+    // 隐藏文件（. 开头，含 .jkkb-* 探测文件）不进文件管理列表。
+    const visible = dirents.filter((dirent) => typeof dirent.name === 'string' && dirent.name.charAt(0) !== '.');
+    const folders = [];
+    const files = [];
+    visible.forEach(function (dirent) {
+      let isDir;
+      try { isDir = dirent.isDirectory(); } catch (err) { isDir = false; }
+      let isFile;
+      try { isFile = dirent.isFile(); } catch (err) { isFile = false; }
+      if (isDir) {
+        folders.push({ name: dirent.name });
+        return;
+      }
+      if (!isFile) return;
+      const absFile = path.join(absDir, dirent.name);
+      let size = 0;
+      let mtimeMs = null;
+      try {
+        const st = io.statSync(absFile);
+        size = typeof st.size === 'number' ? st.size : 0;
+        mtimeMs = typeof st.mtimeMs === 'number' ? st.mtimeMs : null;
+      } catch (err) { /* 读不到就给默认值 */ }
+      files.push({
+        name: dirent.name,
+        ext: path.extname(dirent.name).toLowerCase(),
+        size: size,
+        mtimeMs: mtimeMs,
+      });
+    });
+    const byName = function (a, b) { return String(a.name).localeCompare(String(b.name), 'zh-Hans-CN'); };
+    folders.sort(byName);
+    files.sort(byName);
+    sendJson(res, 200, { ok: true, dir: relInsideRoot(root, absDir), folders: folders, files: files });
+  }
+
+  // GET /file?path=<rel> —— 单文件预览：text → utf8 文本，image → dataUrl，其余 → binary 元信息。
+  async function fileEntry(req, res) {
+    if (req.method !== 'GET') {
+      fail(res, 405, 'method-not-allowed', '仅支持 GET');
+      return;
+    }
+    const root = currentRoot();
+    if (!root) {
+      fail(res, 409, 'root-missing', '尚未配置知识库根目录');
+      return;
+    }
+    const url = requestUrl(req);
+    const relPath = url ? (url.searchParams.get('path') || '') : '';
+    if (!relPath) {
+      fail(res, 400, 'path-required', '缺少 path 参数');
+      return;
+    }
+    const absFile = resolveInsideRoot(root, relPath);
+    if (!absFile) {
+      fail(res, 400, 'path-out-of-root', '文件路径超出知识库根目录范围');
+      return;
+    }
+    let stats;
+    try {
+      stats = io.statSync(absFile);
+    } catch (err) {
+      stats = null;
+    }
+    if (!stats || !stats.isFile()) {
+      fail(res, 404, 'file-not-found', '文件不存在：' + relPath);
+      return;
+    }
+    const ext = path.extname(absFile).toLowerCase();
+    const base = {
+      path: relInsideRoot(root, absFile),
+      name: path.basename(absFile),
+      ext: ext,
+      size: typeof stats.size === 'number' ? stats.size : 0,
+      mtimeMs: typeof stats.mtimeMs === 'number' ? stats.mtimeMs : null,
+    };
+    if (FILE_TEXT_EXTS.indexOf(ext) >= 0) {
+      if (stats.size > FILE_TEXT_MAX_BYTES) {
+        sendJson(res, 200, Object.assign({ ok: true, kind: 'too-large' }, base, { limitBytes: FILE_TEXT_MAX_BYTES }));
+        return;
+      }
+      let text;
+      try {
+        text = io.readFileSync(absFile, 'utf8');
+      } catch (err) {
+        fail(res, 500, 'file-read-failed', '文件读取失败：' + describeErrno(err));
+        return;
+      }
+      sendJson(res, 200, Object.assign({ ok: true, kind: 'text' }, base, { text: text }));
+      return;
+    }
+    if (FILE_IMAGE_EXTS.indexOf(ext) >= 0) {
+      let buf;
+      try {
+        buf = io.readFileSync(absFile);
+      } catch (err) {
+        fail(res, 500, 'file-read-failed', '文件读取失败：' + describeErrno(err));
+        return;
+      }
+      const mime = ext === '.jpg' || ext === '.jpeg'
+        ? 'image/jpeg'
+        : (ext === '.svg' ? 'image/svg+xml' : ('image/' + ext.slice(1)));
+      sendJson(res, 200, Object.assign({ ok: true, kind: 'image' }, base, {
+        dataUrl: 'data:' + mime + ';base64,' + Buffer.from(buf).toString('base64'),
+      }));
+      return;
+    }
+    sendJson(res, 200, Object.assign({ ok: true, kind: 'binary' }, base));
+  }
+
   // GET /runs/:id、POST /runs/:id/cancel —— 用 prefix 路由，exact 不支持路径参数。
   async function runsScoped(req, res) {
     const pathname = String(req.url || '').split('?')[0];
@@ -1220,6 +1391,8 @@ export function createHandlers(options) {
     reportDetail: wrap(reportDetail),
     ledgerCalendar: wrap(ledgerCalendar),
     ledgerDay: wrap(ledgerDay),
+    filesList: wrap(filesList),
+    fileEntry: wrap(fileEntry),
     runsScoped: wrap(runsScoped),
     startRun: wrap(startRun),
   };
@@ -1260,6 +1433,8 @@ export function registerRoutes(ctx, options) {
     registerPrefix(webServer, ROUTE_PATHS.reports, handlers.reportDetail),
     registerOne(webServer, ROUTE_PATHS.ledgerCalendar, handlers.ledgerCalendar),
     registerOne(webServer, ROUTE_PATHS.ledgerDay, handlers.ledgerDay),
+    registerOne(webServer, ROUTE_PATHS.files, handlers.filesList),
+    registerOne(webServer, ROUTE_PATHS.file, handlers.fileEntry),
     registerOne(webServer, ROUTE_PATHS.runs, handlers.runsList),
     // exact 不支持路径参数：/runs/:id 与 /runs/:id/cancel 走 prefix 路由。
     registerPrefix(webServer, ROUTE_PATHS.runs, handlers.runsScoped),

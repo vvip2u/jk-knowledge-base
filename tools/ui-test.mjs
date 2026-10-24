@@ -136,30 +136,55 @@ const BASE_MS = Date.parse('2026-10-17T06:00:00.000Z');
 const NOW_MS = BASE_MS + 65000;
 
 // ═════════════════════════ 1. MENUS ═════════════════════════
-eq('MENUS 共三条', I.MENUS.length, 3);
+eq('MENUS 共五条', I.MENUS.length, 5);
 eq('首条是仪表盘', I.MENUS[0].id, 'dashboard');
 eq('第二条是业务专家', I.MENUS[1].id, 'experts');
-eq('第三条是任务管理', I.MENUS[2].id, 'tasks');
-eq('顺序为仪表盘 → 业务专家 → 任务管理', I.MENUS.map((menu) => menu.label).join(' → '), '仪表盘 → 业务专家 → 任务管理');
+eq('第三条是文件管理', I.MENUS[2].id, 'files');
+eq('第四条是任务管理', I.MENUS[3].id, 'tasks');
+eq('第五条是使用信息', I.MENUS[4].id, 'usage');
+eq('顺序为仪表盘 → 业务专家 → 文件管理 → 任务管理 → 使用信息', I.MENUS.map((menu) => menu.label).join(' → '), '仪表盘 → 业务专家 → 文件管理 → 任务管理 → 使用信息');
 eq('首条 id 等于 DASHBOARD_ID', I.MENUS[0].id, I.DASHBOARD_ID);
 eq('第二条 id 等于 EXPERTS_ID', I.MENUS[1].id, I.EXPERTS_ID);
-eq('第三条 id 等于 TASKS_ID', I.MENUS[2].id, I.TASKS_ID);
-eq('任务菜单仅改展示标签', I.MENUS[2].label, '任务管理');
-contains('业务专家描述已更新', I.MENUS[1].description, '按业务领域维护专家角色');
-eq('菜单描述不含暂未实现', I.MENUS[1].description.indexOf('暂未实现'), -1);
+eq('第三条 id 等于 FILES_ID', I.MENUS[2].id, I.FILES_ID);
+eq('第四条 id 等于 TASKS_ID', I.MENUS[3].id, I.TASKS_ID);
+eq('第五条 id 等于 USAGE_ID', I.MENUS[4].id, I.USAGE_ID);
+eq('文件管理菜单标签', I.MENUS[2].label, '文件管理');
+contains('业务专家描述注明卡片在设置页', I.MENUS[1].description, '卡片在设置页管理');
 
-// 页面分发：业务专家走占位、任务管理仍走看板、仪表盘不变
+// 页面分发：业务专家保留页面但隐藏卡片区（卡片迁至设置页）；其余走各自页面
 const expertsPage = I.PanelContent({
   rootStatus: 'ready',
   root: '/data/kb',
   activeMenu: I.MENUS[1],
 });
-eq('业务专家已替换为真实页面', expertsPage.type, I.ExpertsPage);
-eq('业务专家不再走占位页', findIn(expertsPage, 'data-jk-kb-placeholder', I.EXPERTS_ID), undefined);
-const tasksPage = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[2] });
+eq('业务专家仍挂真实页面', expertsPage.type, I.ExpertsPage);
+eq('主页面专家页隐藏卡片区', expertsPage.props.cardsHidden, true);
+eq('业务专家不走占位页', findIn(expertsPage, 'data-jk-kb-placeholder', I.EXPERTS_ID), undefined);
+// 回归防护：ExpertsPage 曾引用未定义的 unbindSkill 导致 DSH 真渲染白屏——直调本体捕获 ReferenceError。
+let expertsRendered = null;
+let expertsRenderError = '';
+try { expertsRendered = I.ExpertsPage(); } catch (err) { expertsRenderError = String(err && err.message); }
+// ExpertsPage 直调 ExpertsView(props)（非 createElement 包装），返回的已是内部元素树，断言根标记而非组件类型。
+ok('业务专家页可完整渲染（无未定义引用）', !!expertsRendered && findIn(expertsRendered, 'data-jk-kb-experts', 'active') !== undefined, expertsRenderError);
+ok('业务专家副标题用 blockquote 呈现', !!expertsRendered && findIn(expertsRendered, 'className', 'jk-kb-blockquote') !== undefined && findIn(expertsRendered, 'className', 'jk-kb-blockquote').type === 'blockquote');
+// 业务专家模块已迁入设置页（基本信息下方）
+const expertsModuleSrc = source.slice(source.indexOf("h('div', { className: 'jk-kb-experts-module'"), source.indexOf("h('div', { className: 'jk-kb-experts-module'") + 400);
+ok('设置页包含业务专家模块容器', source.indexOf("'data-jk-kb-experts-module': 'true'") >= 0);
+ok('业务专家模块套卡片壳（与基本信息同款 Card）', source.indexOf("Card({ 'data-jk-kb-card': 'experts' }") >= 0);
+ok('业务专家模块挂载 ExpertsPage', expertsModuleSrc.indexOf('h(ExpertsPage, null)') >= 0);
+const rootSectionIdx = source.indexOf("Card({\n        className: p.focusActive === true ? 'jk-kb-focus-pulse'");
+const expertsModuleIdx = source.indexOf("'data-jk-kb-experts-module': 'true'");
+ok('业务专家模块位于基本信息模块之后', rootSectionIdx >= 0 && expertsModuleIdx > rootSectionIdx);
+const tasksPage = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[3] });
 eq('任务管理页挂双视图容器', tasksPage.type, I.TasksPage);
+const filesPage = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[2] });
+eq('文件管理页挂 FilesPage', filesPage.type, I.FilesPage);
+eq('文件管理不走占位页', findIn(filesPage, 'data-jk-kb-placeholder', I.FILES_ID), undefined);
 const dashboardPage = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[0] });
 ok('仪表盘行为不变', !!findIn(dashboardPage, 'data-jk-kb-dashboard', 'true'));
+const usagePage = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[4] });
+eq('使用信息页挂 UsagePage', usagePage.type, I.UsagePage);
+eq('使用信息不走占位页', findIn(usagePage, 'data-jk-kb-placeholder', I.USAGE_ID), undefined);
 const genericPlaceholder = I.PlaceholderPage({ id: 'future', label: '未来页' });
 contains('其它菜单仍用通用占位说明', textOf(genericPlaceholder), '页面尚未实现。新增页面只需在 MENUS');
 
@@ -180,8 +205,8 @@ eq('两者都缺时展示占位', I.formatProgress({}), '—');
 // ═════════════════════════ 2. runs 列表渲染 ═════════════════════════
 const emptyView = I.RunsBoardView({ phase: 'ready', runs: [], onRunKind: () => {}, onRetry: () => {} });
 ok('空态节点存在', !!findIn(emptyView, 'data-jk-kb-runs-empty', 'true'));
-contains('空态给出根目录 → 开始建库引导', textOf(findIn(emptyView, 'data-jk-kb-runs-empty', 'true')), '开始建库');
-contains('空态提到设置根目录', textOf(findIn(emptyView, 'data-jk-kb-runs-empty', 'true')), '设置');
+contains('空态显示暂无任务文案', textOf(findIn(emptyView, 'data-jk-kb-runs-empty', 'true')), '暂无任务');
+ok('空态带任务图标', findIn(emptyView, 'data-jk-kb-runs-empty', 'true').children.some((child) => child && child.type === 'svg' && child.props.className.indexOf('jk-kb-empty-icon') >= 0));
 
 const runningRun = {
   id: 'run-1',
@@ -231,7 +256,9 @@ const rowsView = I.RunsBoardView({
   onOpenRun: (id) => opened.push(id),
 });
 const runningRow = findIn(rowsView, 'data-jk-kb-run', 'run-1');
-ok('运行中的行为可点击按钮', !!runningRow && runningRow.type === 'button');
+ok('运行中的行为表格行', !!runningRow && runningRow.type === 'tr');
+ok('运行中的行带 shadcn 表格行标记', runningRow.props['data-jk-kb-table-row'] === 'true');
+eq('运行中的行 role=button', runningRow.props.role, 'button');
 eq('运行中行的状态标记', runningRow.props['data-jk-kb-run-status'], 'running');
 contains('运行中的类型显示「建库」', textOf(runningRow), '建库');
 contains('运行中的步骤进度 3/5', textOf(runningRow), '3/5');
@@ -1133,16 +1160,15 @@ eq('未知级别按 ok（灰）', I.presentPreflight({ checks: [{ id: 'x', level
 eq('空报告不抛且默认通过', I.presentPreflight({}).label, '通过');
 eq('null 报告不抛', I.presentPreflight(null).level, 'ok');
 
-// 列表顶部：体检行 + 展开卡片
-const pfErrorView = I.RunsBoardView({
+// 使用信息页顶部：体检行 + 展开卡片（自任务管理页迁来，与 dashboard 数据互不依赖）
+const pfUsageView = (pf) => I.UsageView({
   phase: 'ready',
-  runs: [],
-  preflight: { phase: 'ready', report: pfErrorReport, expanded: true },
-  onRunKind: () => {},
-  onRetry: () => {},
+  data: null,
+  preflight: pf,
   onRecheck: () => {},
   onTogglePreflight: () => {},
 });
+const pfErrorView = pfUsageView({ phase: 'ready', report: pfErrorReport, expanded: true });
 eq('体检行失败态', findIn(pfErrorView, 'data-jk-kb-preflight', 'error').props['data-jk-kb-preflight'], 'error');
 eq('体检结论文案失败', textOf(findIn(pfErrorView, 'data-jk-kb-preflight-summary', 'true')), '失败');
 eq('失败时展开卡片', findIn(pfErrorView, 'data-jk-kb-preflight-card', 'error').props['data-jk-kb-preflight-card'], 'error');
@@ -1161,40 +1187,28 @@ ok('fix 有独立标记', !!findIn(pfErrorView, 'data-jk-kb-check-fix', 'writabl
 eq('错误码徽标', textOf(findIn(pfErrorView, 'data-jk-kb-preflight-code', 'ROOT_NOT_WRITABLE')), 'ROOT_NOT_WRITABLE');
 eq('体检抬头有重新检查按钮', !!findIn(pfErrorView, 'data-jk-kb-preflight-recheck', 'true'), true);
 
-const pfCollapsed = I.RunsBoardView({
-  phase: 'ready', runs: [],
-  preflight: { phase: 'ready', report: pfErrorReport, expanded: false },
-  onRunKind: () => {}, onRetry: () => {},
-});
+const pfCollapsed = pfUsageView({ phase: 'ready', report: pfErrorReport, expanded: false });
 eq('收起时不渲染卡片', findIn(pfCollapsed, 'data-jk-kb-preflight-card', 'error'), undefined);
-const pfWarnView = I.RunsBoardView({
-  phase: 'ready', runs: [],
-  preflight: { phase: 'ready', report: { ok: true, checks: pfWarn.checks.map((check) => ({ id: check.id, level: 'warn', title: check.title, detail: check.detail })) }, expanded: false },
-  onRunKind: () => {}, onRetry: () => {},
-});
+const pfWarnView = pfUsageView({ phase: 'ready', report: { ok: true, checks: pfWarn.checks.map((check) => ({ id: check.id, level: 'warn', title: check.title, detail: check.detail })) }, expanded: false });
 eq('警告结论文案', textOf(findIn(pfWarnView, 'data-jk-kb-preflight-summary', 'true')), '2 项警告');
-const pfOkView = I.RunsBoardView({
-  phase: 'ready', runs: [],
-  preflight: { phase: 'ready', report: pfOkReport, expanded: false },
-  onRunKind: () => {}, onRetry: () => {},
-});
+const pfOkView = pfUsageView({ phase: 'ready', report: pfOkReport, expanded: false });
 eq('通过结论文案', textOf(findIn(pfOkView, 'data-jk-kb-preflight-summary', 'true')), '通过');
 
 // 加载 / 不可用 / 未知 降级
-const pfLoadingView = I.RunsBoardView({ phase: 'ready', runs: [], preflight: { phase: 'loading' }, onRunKind: () => {}, onRetry: () => {} });
+const pfLoadingView = pfUsageView({ phase: 'loading' });
 eq('体检中文案', textOf(findIn(pfLoadingView, 'data-jk-kb-preflight-summary', 'true')), '体检中…');
 eq('体检中禁用重新检查', findIn(pfLoadingView, 'data-jk-kb-preflight-recheck', 'true').props.disabled, true);
-const pfUnavailableView = I.RunsBoardView({
-  phase: 'ready', runs: [],
-  preflight: { phase: 'error', error: { code: 'host-unreachable', message: '连接被拒绝' } },
-  onRunKind: () => {}, onRetry: () => {},
-});
+const pfUnavailableView = pfUsageView({ phase: 'error', error: { code: 'host-unreachable', message: '连接被拒绝' } });
 eq('体检不可用文案', textOf(findIn(pfUnavailableView, 'data-jk-kb-preflight-summary', 'true')), '体检不可用');
 eq('体检不可用标记', findIn(pfUnavailableView, 'data-jk-kb-preflight', 'unavailable').props['data-jk-kb-preflight'], 'unavailable');
 contains('体检不可用展示原因', textOf(findIn(pfUnavailableView, 'data-jk-kb-preflight-error', 'host-unreachable')), '连接被拒绝');
-const pfEmptyView = I.RunsBoardView({ phase: 'ready', runs: [], preflight: { phase: 'ready', report: null }, onRunKind: () => {}, onRetry: () => {} });
+const pfEmptyView = pfUsageView({ phase: 'ready', report: null });
 eq('无结论显示 —', textOf(findIn(pfEmptyView, 'data-jk-kb-preflight-summary', 'true')), '—');
-ok('缺省 preflight 不抛', !!I.RunsBoardView({ phase: 'ready', runs: [], onRunKind: () => {}, onRetry: () => {} }));
+ok('缺省 preflight 不抛', !!I.UsageView({ phase: 'loading', data: null }));
+// 任务管理页不再渲染体检（已迁至使用信息页）
+const pfRunsView = I.RunsBoardView({ phase: 'ready', runs: [], preflight: { phase: 'ready', report: pfErrorReport, expanded: true }, onRunKind: () => {}, onRetry: () => {} });
+eq('任务页不再渲染体检行', findIn(pfRunsView, 'data-jk-kb-preflight', 'error'), undefined);
+eq('任务页不再渲染体检卡片', findIn(pfRunsView, 'data-jk-kb-preflight-card', 'error'), undefined);
 
 // 错误码兜底映射（checks 为空时）
 eq('TOO_MANY_FILES 兜底', I.presentPreflight({ ok: false, code: 'TOO_MANY_FILES', checks: [] }).advice, '文件数超过上限，请换一个更小的目录作为根，或提高上限配置');
@@ -1203,11 +1217,7 @@ eq('ROOT_NOT_WRITABLE 兜底', I.presentPreflight({ ok: false, code: 'ROOT_NOT_W
 eq('ROOT_NOT_AUTHORIZED 兜底', I.presentPreflight({ ok: false, code: 'ROOT_NOT_AUTHORIZED', checks: [] }).advice, '根目录授权已失效，请回设置重新确认并保存');
 eq('TOOLS_MISSING 兜底', I.presentPreflight({ ok: false, code: 'TOOLS_MISSING', checks: [] }).advice, '宿主工具未全部注册，请重启应用');
 eq('未知错误码原样显示', I.presentPreflight({ ok: false, code: 'SOMETHING_NEW', checks: [] }).advice, 'SOMETHING_NEW');
-const pfAdviceView = I.RunsBoardView({
-  phase: 'ready', runs: [],
-  preflight: { phase: 'ready', report: { ok: false, code: 'DISK_LOW', checks: [] }, expanded: true },
-  onRunKind: () => {}, onRetry: () => {},
-});
+const pfAdviceView = pfUsageView({ phase: 'ready', report: { ok: false, code: 'DISK_LOW', checks: [] }, expanded: true });
 contains('兜底建议渲染到卡片', textOf(findIn(pfAdviceView, 'data-jk-kb-preflight-advice', 'DISK_LOW')), '磁盘剩余空间不足 200MB');
 ok('checks 为空时给空明细提示', !!findIn(pfAdviceView, 'data-jk-kb-preflight-empty', 'true'));
 
@@ -1263,11 +1273,7 @@ eq('422 错误码', outcome422.code, 'DISK_LOW');
 eq('422 checks 原样带回', outcome422.checks.length, 1);
 eq('422 checks 内容', outcome422.checks[0].title, '磁盘空间');
 contains('422 宿主 message 优先', outcome422.message, '磁盘剩余空间不足（宿主）');
-const pf422View = I.RunsBoardView({
-  phase: 'ready', runs: [],
-  preflight: { phase: 'ready', report: { ok: false, code: outcome422.code, checks: outcome422.checks }, expanded: true },
-  onRunKind: () => {}, onRetry: () => {},
-});
+const pf422View = pfUsageView({ phase: 'ready', report: { ok: false, code: outcome422.code, checks: outcome422.checks }, expanded: true });
 eq('422 checks 渲染到卡片', findIn(pf422View, 'data-jk-kb-check', 'disk').props['data-jk-kb-check-level'], 'error');
 contains('422 check 详情', textOf(findIn(pf422View, 'data-jk-kb-check', 'disk')), '剩余 120MB');
 
@@ -1560,7 +1566,7 @@ eq('默认列表 tab 激活', findIn(switchTree, 'data-jk-kb-view-tab', 'list').
 eq('日历 tab 未激活', findIn(switchTree, 'data-jk-kb-view-tab', 'calendar').props['aria-pressed'], false);
 findIn(switchTree, 'data-jk-kb-view-tab', 'calendar').props.onClick();
 eq('切到日历回调', viewChanges.join(','), 'calendar');
-eq('菜单条目未被视图切换影响', I.MENUS.length, 3);
+eq('菜单条目未被视图切换影响', I.MENUS.length, 5);
 
 // 列表 token 列三态
 const tokenRuns = [
@@ -1729,7 +1735,7 @@ eq('台账失败错误码', I.normalizeLedgerResponse(ledgerResult).error.code, 
 
 // 不新增定时器：定时器只存在于既有轮询控制器
 eq('没有直呼 setInterval(', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处（定义 + 列表 + 详情）', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处（定义 + 列表 + 详情 + 专家对话）', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 const calendarSection = source.slice(source.indexOf('function LedgerCalendarPage'), source.indexOf('function LedgerCalendarView'));
 eq('日历页不挂轮询', calendarSection.indexOf('usePollingEffect') < 0, true);
 
@@ -1874,9 +1880,7 @@ curate422Fetch.restore();
 eq('入柜 422 保留状态', curate422.status, 422);
 eq('入柜 422 checks 原样带回', curate422.checks.length, 1);
 contains('入柜 422 宿主 message 优先', curate422.message, '入柜需要指定技能');
-const curate422View = I.RunsBoardView(Object.assign({}, boardProps, {
-  preflight: { phase: 'ready', report: { ok: false, code: curate422.code, checks: curate422.checks }, expanded: true },
-}));
+const curate422View = pfUsageView({ phase: 'ready', report: { ok: false, code: curate422.code, checks: curate422.checks }, expanded: true });
 contains('入柜失败用既有体检卡片', textOf(findIn(curate422View, 'data-jk-kb-check', 'mode')), '模式冲突');
 
 const okPlan = I.planCurateResult({ started: true });
@@ -2013,7 +2017,9 @@ eq('收起时不渲染 findings', findIn(collapsedTree, 'data-jk-kb-report-findi
 
 // 空态 / 失败 / 缺省
 const emptyReports = I.ReportsView({ phase: 'ready', reports: [], expandedId: '' });
-contains('报告空态文案', textOf(findIn(emptyReports, 'data-jk-kb-reports-empty', 'true')), '还没有整理报告，点上方「整理」开始一次只读扫描');
+contains('报告空态显示暂无报告', textOf(findIn(emptyReports, 'data-jk-kb-reports-empty', 'true')), '暂无报告');
+ok('报告空态带图标', findIn(emptyReports, 'data-jk-kb-reports-empty', 'true').children.some((child) => child && child.type === 'svg' && child.props.className.indexOf('jk-kb-empty-icon') >= 0));
+ok('报告列表为 shadcn 表格', findIn(reportsTree, 'data-jk-kb-reports', 'true').type === 'table');
 let reportsRetried = 0;
 const reportsError = I.ReportsView({ phase: 'error', reports: [], error: { code: 'host-unreachable' }, onRetry: () => { reportsRetried += 1; } });
 contains('报告不可用文案', textOf(reportsError), '报告不可用');
@@ -2042,7 +2048,7 @@ eq('报告失败错误码', I.normalizeReportsResponse(reportsDown).error.code, 
 
 // 不新增定时器：报告面板只用 effect
 eq('仍无 setInterval( 直呼', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 const archiveReportsSection = source.slice(source.indexOf('function ReportsPanel'), source.indexOf('function ReportsView'));
 eq('报告面板不挂轮询/定时器',
   archiveReportsSection.indexOf('usePollingEffect') < 0 && archiveReportsSection.indexOf('setInterval') < 0 && archiveReportsSection.indexOf('setTimeout') < 0,
@@ -2057,7 +2063,7 @@ eq('技能 tab 激活', findIn(threeTabSwitch, 'data-jk-kb-view-tab', 'skills').
 eq('技能 tab 文案', textOf(findIn(threeTabSwitch, 'data-jk-kb-view-tab', 'skills')), '技能');
 findIn(threeTabSwitch, 'data-jk-kb-view-tab', 'list').props.onClick();
 eq('切回列表回调', skillTabChanges.join(','), 'list');
-eq('菜单仍三条不变', I.MENUS.length, 3);
+eq('菜单仍五条不变', I.MENUS.length, 5);
 
 // 相似度与判重（与 host lifecycle 同口径）
 eq('normalize 去空白标点虚词', I.normalizeSkillText('  客户 的访谈，记录！ '), '客户访谈记录');
@@ -2313,7 +2319,7 @@ eq('调用日志失败归一', I.normalizeCallsResponse({ ok: false, error: { co
 
 // 不新增定时器
 eq('仍无 setInterval( 直呼', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 const skillViewSection = source.slice(source.indexOf('function SkillViewPage'), source.indexOf('function SkillViewView'));
 eq('技能视图不挂轮询/定时器',
   skillViewSection.indexOf('usePollingEffect') < 0 && skillViewSection.indexOf('setInterval') < 0 && skillViewSection.indexOf('setTimeout') < 0,
@@ -2641,7 +2647,7 @@ eq('回传 finding 原因', requestedFinding.archiveReason, '旧');
 
 // 不新增定时器
 eq('仍无 setInterval( 直呼', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 const archiveReportsSection2 = source.slice(source.indexOf('function ReportsPanel'), source.indexOf('function ReportsView'));
 eq('报告面板不挂轮询/定时器',
   archiveReportsSection2.indexOf('usePollingEffect') < 0 && archiveReportsSection2.indexOf('setInterval') < 0 && archiveReportsSection2.indexOf('setTimeout') < 0,
@@ -2681,8 +2687,8 @@ const expertsView = I.ExpertsView({
   status: 'active',
   experts: { phase: 'ready', list: expertsNorm.experts, error: null },
   skills: { phase: 'ready', groups: I.presentSkills({ ok: true, skills: [
-    { id: 'mkt-copy', name: '营销文案', role: '市场', stage: 'v1' },
-    { id: 'mkt-plan', name: '营销策划', role: '市场', stage: 'v2' },
+    { id: 'mkt-copy', name: '营销文案', role: '市场', stage: 'v1', purpose: '生成营销文案初稿' },
+    { id: 'mkt-plan', name: '营销策划', role: '市场', stage: 'v2', purpose: '制定季度营销策划' },
   ] }).groups, error: null },
   form: { open: false, mode: 'create', id: '', fields: I.expertToForm(null), search: '', notice: null },
   archive: { target: null, confirmed: false, busy: false, notice: null },
@@ -2693,16 +2699,327 @@ ok('专家卡片存在', !!findIn(expertsView, 'data-jk-kb-expert', 'EXP-001'));
 eq('卡片名称', textOf(findIn(expertsView, 'data-jk-kb-expert-name', 'EXP-001')), '客户成功专家');
 eq('卡片领域', textOf(findIn(expertsView, 'data-jk-kb-expert-domain', 'EXP-001')), '客户成功');
 contains('卡片职责', textOf(findIn(expertsView, 'data-jk-kb-expert-responsibility', 'EXP-001')), '客户访谈');
-contains('卡片技能数', textOf(findIn(expertsView, 'data-jk-kb-expert-skills', 'EXP-001')), '技能 2');
-contains('卡片技能 tooltip 名称列表', findIn(expertsView, 'data-jk-kb-expert-skills', 'EXP-001').props.title, '营销文案');
+contains('卡片技能数', textOf(findIn(expertsView, 'data-jk-kb-expert-skills', 'EXP-001')), '技能：2');
+eq('卡片信号触发器', !!findIn(expertsView, 'data-jk-kb-expert-signal', 'EXP-001'), true);
+eq('卡片信号浮层 tooltip 角色', findIn(expertsView, 'data-jk-kb-expert-signal-popover', 'EXP-001').props.role, 'tooltip');
+contains('信号浮层技能名', textOf(findIn(expertsView, 'data-jk-kb-expert-signal-item', '营销文案')), '营销文案');
+contains('信号浮层技能介绍', textOf(findIn(expertsView, 'data-jk-kb-expert-signal-item', '营销文案')), '生成营销文案初稿');
+ok('信号浮层未绑定技能兜底', !!findIn(expertsView, 'data-jk-kb-expert-signal-empty', 'true'));
 eq('卡片提示词有', textOf(findIn(expertsView, 'data-jk-kb-expert-prompt', 'EXP-001')), '提示词：有');
 eq('卡片提示词无', textOf(findIn(expertsView, 'data-jk-kb-expert-prompt', 'EXP-002')), '提示词：无');
 findIn(expertsView, 'data-jk-kb-expert-edit', 'EXP-001').props.onClick();
 eq('编辑回传专家', editedExpert.id, 'EXP-001');
-findIn(expertsView, 'data-jk-kb-expert-archive', 'EXP-001').props.onClick();
-eq('归档回传专家', archivedExpert.id, 'EXP-001');
+eq('活跃卡片不再有归档按钮（按需求移除）', findIn(expertsView, 'data-jk-kb-expert-archive', 'EXP-001'), undefined);
 eq('top 新建按钮', !!findIn(expertsView, 'data-jk-kb-expert-new', 'true'), true);
 eq('状态切换按钮', findIn(expertsView, 'data-jk-kb-experts-status', 'archived').props['data-jk-kb-experts-status'], 'archived');
+// 主页面 cardsHidden：全部/其他 标签页 + 卡片（卡片与设置页同款）
+const panelTabChanges = [];
+const panelExpertsView = I.ExpertsView({
+  cardsHidden: true,
+  panelTab: 'all',
+  onPanelTab: (tab) => panelTabChanges.push(tab),
+  status: 'active',
+  experts: { phase: 'ready', list: expertsNorm.experts, error: null },
+  skills: { phase: 'ready', groups: [], error: null },
+  form: { open: false, mode: 'create', id: '', fields: I.expertToForm(null), search: '', notice: null },
+  archive: { target: null, confirmed: false, busy: false, notice: null },
+});
+ok('主页面挂全部标签', !!findIn(panelExpertsView, 'data-jk-kb-expert-tab', 'all'));
+ok('主页面挂其他标签', !!findIn(panelExpertsView, 'data-jk-kb-expert-tab', 'other'));
+eq('默认全部标签激活', findIn(panelExpertsView, 'data-jk-kb-expert-tab', 'all').props['aria-pressed'], true);
+eq('全部标签文案', textOf(findIn(panelExpertsView, 'data-jk-kb-expert-tab', 'all')), '全部');
+eq('其他标签文案', textOf(findIn(panelExpertsView, 'data-jk-kb-expert-tab', 'other')), '其他');
+ok('全部标签下有专家卡片', !!findIn(panelExpertsView, 'data-jk-kb-expert', 'EXP-001'));
+findIn(panelExpertsView, 'data-jk-kb-expert-tab', 'other').props.onClick();
+eq('切到其他标签回调', panelTabChanges.join(','), 'other');
+// 其他标签：仅显示领域为「其他」或未填的专家（两个 fixture 领域均非「其他」→ 空态）
+const otherExpertsView = I.ExpertsView({
+  cardsHidden: true,
+  panelTab: 'other',
+  status: 'active',
+  experts: { phase: 'ready', list: expertsNorm.experts, error: null },
+  skills: { phase: 'ready', groups: [], error: null },
+  form: { open: false, mode: 'create', id: '', fields: I.expertToForm(null), search: '', notice: null },
+  archive: { target: null, confirmed: false, busy: false, notice: null },
+});
+eq('其他标签激活', findIn(otherExpertsView, 'data-jk-kb-expert-tab', 'other').props['aria-pressed'], true);
+eq('其他标签过滤非其他领域专家', findIn(otherExpertsView, 'data-jk-kb-expert', 'EXP-001'), undefined);
+contains('其他标签空态文案', textOf(findIn(otherExpertsView, 'data-jk-kb-experts-empty', 'true')), '「其他」分类下还没有专家');
+// 立即使用：主页面「全部」标签下编辑按钮换成「立即使用」；点击进入对话、收起专家区域
+eq('全部标签下是立即使用按钮', textOf(findIn(panelExpertsView, 'data-jk-kb-expert-use', 'EXP-001')), '立即使用');
+eq('全部标签下无编辑按钮', findIn(panelExpertsView, 'data-jk-kb-expert-edit', 'EXP-001'), undefined);
+const usedExperts = [];
+const useModeView = I.ExpertsView({
+  cardsHidden: true,
+  panelTab: 'all',
+  onUseExpert: (expert) => usedExperts.push(expert.id),
+  status: 'active',
+  experts: { phase: 'ready', list: expertsNorm.experts, error: null },
+  skills: { phase: 'ready', groups: [], error: null },
+  form: { open: false, mode: 'create', id: '', fields: I.expertToForm(null), search: '', notice: null },
+  archive: { target: null, confirmed: false, busy: false, notice: null },
+});
+findIn(useModeView, 'data-jk-kb-expert-use', 'EXP-001').props.onClick();
+eq('立即使用回传专家', usedExperts.join(','), 'EXP-001');
+eq('设置页卡片仍是编辑按钮', textOf(findIn(expertsView, 'data-jk-kb-expert-edit', 'EXP-001')), '编辑');
+let chatBacked = 0;
+const chatModeView = I.ExpertsView({
+  chatExpert: expertsNorm.experts[0],
+  onChatBack: () => { chatBacked += 1; },
+  status: 'active',
+  experts: { phase: 'ready', list: expertsNorm.experts, error: null },
+  skills: {
+    phase: 'ready', error: null,
+    groups: [{ key: '内容', label: '内容', skills: [
+      { id: 'mkt-copy', name: '文案整理', label: '文案整理' },
+      { id: 'mkt-plan', name: '投放计划', label: '投放计划' },
+      { id: 'other', name: '不相关技能', label: '不相关技能' },
+    ] }],
+  },
+  form: { open: false, mode: 'create', id: '', fields: I.expertToForm(null), search: '', notice: null },
+  archive: { target: null, confirmed: false, busy: false, notice: null },
+});
+eq('对话模式挂 ExpertChatPage', chatModeView.type, I.ExpertChatPage);
+eq('对话模式绑定专家', chatModeView.props.expert.id, 'EXP-001');
+eq('对话模式技能分组按专家过滤', chatModeView.props.skillGroups[0].skills.map((skill) => skill.id).join(','), 'mkt-copy,mkt-plan');
+chatModeView.props.onBack();
+eq('对话返回回调', chatBacked, 1);
+eq('对话模式收起专家区域', findIn(chatModeView, 'data-jk-kb-experts-list', 'true'), undefined);
+// 专家对话视图：输入框在下方、执行步骤时间线原样呈现
+const chatDetail = I.presentRunDetail({
+  run: { id: 'run-chat-1', title: '整理入库', kind: 'curate', status: 'done', startedAt: '2026-10-23T08:00:00Z', endedAt: '2026-10-23T08:00:05Z', summary: '入柜 2 张卡片' },
+  steps: [{ id: 's1', name: '解析正文', status: 'done', startedAt: '2026-10-23T08:00:00Z', endedAt: '2026-10-23T08:00:02Z' }],
+});
+const chatView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [
+    { key: 'chat-1', text: '请整理这段访谈', runId: 'run-chat-1', phase: 'done', detail: chatDetail, error: null },
+    { key: 'chat-2', text: '起跑失败的消息', runId: null, phase: 'failed', detail: null, error: 'run 启动失败' },
+  ],
+  draft: '下一条',
+  busy: false,
+  onSend: () => {},
+  onBack: () => {},
+});
+contains('对话头部专家名', textOf(findIn(chatView, 'data-jk-kb-chat-expert', 'EXP-001')), '客户成功专家');
+contains('用户消息气泡', textOf(findIn(chatView, 'data-jk-kb-chat-user', 'chat-1')), '请整理这段访谈');
+contains('执行块状态', textOf(findIn(chatView, 'data-jk-kb-chat-run', 'run-chat-1')), '完成');
+ok('执行块含步骤时间线', !!findIn(chatView, 'data-jk-kb-step', 's1'));
+contains('完成摘要', textOf(findIn(chatView, 'data-jk-kb-chat-summary', 'chat-1')), '入柜 2 张卡片');
+ok('起跑失败渲染错误提示', !!findIn(chatView, 'data-jk-kb-chat-error', 'chat-2'));
+contains('输入框占位文案', findIn(chatView, 'data-jk-kb-chat-draft', 'true').props.placeholder, '回车发送');
+eq('输入框是多行 textarea', findIn(chatView, 'data-jk-kb-chat-draft', 'true').type, 'textarea');
+contains('输入框支持换行提示', findIn(chatView, 'data-jk-kb-chat-draft', 'true').props.placeholder, 'Shift+回车换行');
+eq('发送按钮可点（草稿非空）', findIn(chatView, 'data-jk-kb-chat-send', 'true').props.disabled, false);
+eq('发送按钮为圆形图标钮', findIn(chatView, 'data-jk-kb-chat-send', 'true').props['aria-label'], '发送');
+contains('composer 绑定专家提示', textOf(findIn(chatView, 'data-jk-kb-chat-binding', 'true')), '绑定专家');
+eq('加号钮为技能选择入口', findIn(chatView, 'data-jk-kb-chat-plus', 'true').props['aria-label'], '选择技能');
+eq('加号钮可点击', findIn(chatView, 'data-jk-kb-chat-plus', 'true').props.disabled, false);
+eq('输入框行数加大', findIn(chatView, 'data-jk-kb-chat-draft', 'true').props.rows, 5);
+ok('输入框使用加大样式', (findIn(chatView, 'data-jk-kb-chat-draft', 'true').props.className || '').includes('jk-kb-chat-draft'));
+eq('语音不支持时无麦克风', findIn(chatView, 'data-jk-kb-chat-mic', 'true'), undefined);
+eq('默认不弹技能浮层', findIn(chatView, 'data-jk-kb-skill-menu', 'true'), undefined);
+eq('未选技能无标签', findIn(chatView, 'data-jk-kb-chat-skill-tags', 'true'), undefined);
+// 快捷选项：三行单选，点击回传预设并收起
+const pickedPresets = [];
+const presetsView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [],
+  draft: '',
+  busy: false,
+  showPresets: true,
+  presets: [
+    { id: 'interview', label: '整理一段访谈记录', text: '请把这段访谈记录整理成知识卡片：\n\n' },
+    { id: 'note', label: '整理一篇技术笔记', text: '请把这篇技术笔记整理成知识卡片：\n\n' },
+    { id: 'minutes', label: '整理一份会议纪要', text: '请把这份会议纪要整理成知识卡片：\n\n' },
+  ],
+  onPickPreset: (option) => pickedPresets.push(option.id),
+  onSend: () => {},
+  onBack: () => {},
+});
+ok('快捷选项容器是 radiogroup', !!findIn(presetsView, 'data-jk-kb-chat-presets', 'true'));
+eq('快捷选项共三条', flatten(presetsView).filter((el) => el.props && el.props['data-jk-kb-chat-preset'] !== undefined).length, 3);
+eq('快捷选项一标签', textOf(findIn(presetsView, 'data-jk-kb-chat-preset', 'interview')), '整理一段访谈记录');
+eq('快捷选项二标签', textOf(findIn(presetsView, 'data-jk-kb-chat-preset', 'note')), '整理一篇技术笔记');
+eq('快捷选项三标签', textOf(findIn(presetsView, 'data-jk-kb-chat-preset', 'minutes')), '整理一份会议纪要');
+eq('选项为单选角色', findIn(presetsView, 'data-jk-kb-chat-preset', 'interview').props.role, 'radio');
+findIn(presetsView, 'data-jk-kb-chat-preset', 'note').props.onClick();
+eq('点击选项回传预设', pickedPresets.join(','), 'note');
+const presetHiddenView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [],
+  draft: '请把这篇技术笔记整理成知识卡片：\n\n',
+  busy: false,
+  showPresets: false,
+  presets: [],
+  onPickPreset: () => {},
+  onSend: () => {},
+  onBack: () => {},
+});
+eq('选项选后收起隐藏', findIn(presetHiddenView, 'data-jk-kb-chat-presets', 'true'), undefined);
+eq('选中内容填入输入框', findIn(presetHiddenView, 'data-jk-kb-chat-draft', 'true').props.value, '请把这篇技术笔记整理成知识卡片：\n\n');
+// 加号浮层：列出该专家绑定的技能，选中后以标签形式挂在输入框上
+const chatSkillGroups = [
+  { key: '内容', label: '内容', skills: [
+    { id: 'mkt-copy', name: '文案整理', label: '文案整理' },
+    { id: 'mkt-plan', name: '投放计划', label: '投放计划' },
+  ] },
+  { key: '洞察', label: '洞察', skills: [{ id: 'sk-insight', name: '行业洞察', label: '行业洞察' }] },
+];
+const pickedSkills = [];
+let skillMenuToggled = 0;
+let skillRemoved = 0;
+const skillMenuView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [],
+  draft: '正文',
+  busy: false,
+  skillGroups: chatSkillGroups,
+  skillMenuOpen: true,
+  selectedSkillId: '',
+  onToggleSkillMenu: () => { skillMenuToggled += 1; },
+  onPickSkill: (id) => { pickedSkills.push(id); },
+  onRemoveSkill: () => { skillRemoved += 1; },
+  onSend: () => {},
+  onBack: () => {},
+});
+eq('浮层角色为 listbox', findIn(skillMenuView, 'data-jk-kb-skill-menu', 'true').props.role, 'listbox');
+eq('浮层选项数（自动判定 + 3 技能）', flatten(skillMenuView).filter((el) => el.props && el.props['data-jk-kb-skill-option'] !== undefined).length, 4);
+contains('自动判定选项', textOf(findIn(skillMenuView, 'data-jk-kb-skill-option', '')), '自动判定');
+contains('技能选项带名称', textOf(findIn(skillMenuView, 'data-jk-kb-skill-option', 'mkt-copy')), '文案整理');
+ok('分组标题渲染', !!findIn(skillMenuView, 'data-jk-kb-skill-menu-group', '洞察'));
+eq('加号钮展开态回传', findIn(skillMenuView, 'data-jk-kb-chat-plus', 'true').props['aria-expanded'], true);
+findIn(skillMenuView, 'data-jk-kb-chat-plus', 'true').props.onClick();
+eq('加号触发浮层开关回调', skillMenuToggled, 1);
+findIn(skillMenuView, 'data-jk-kb-skill-option', 'mkt-plan').props.onClick();
+eq('点选技能回传 id', pickedSkills.join(','), 'mkt-plan');
+findIn(skillMenuView, 'data-jk-kb-skill-option', '').props.onClick();
+eq('点自动判定回传空 id', pickedSkills.join(','), 'mkt-plan,');
+const skillTagView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [],
+  draft: '正文',
+  busy: false,
+  skillGroups: chatSkillGroups,
+  skillMenuOpen: false,
+  selectedSkillId: 'sk-insight',
+  onToggleSkillMenu: () => {},
+  onPickSkill: () => {},
+  onRemoveSkill: () => { skillRemoved += 1; },
+  onSend: () => {},
+  onBack: () => {},
+});
+contains('选中技能以标签展示', textOf(findIn(skillTagView, 'data-jk-kb-chat-skill-tag', 'sk-insight')), '技能：行业洞察');
+eq('选中后浮层收起', findIn(skillTagView, 'data-jk-kb-skill-menu', 'true'), undefined);
+eq('加号钮收起态回传', findIn(skillTagView, 'data-jk-kb-chat-plus', 'true').props['aria-expanded'], false);
+findIn(skillTagView, 'data-jk-kb-chat-skill-remove', 'true').props.onClick();
+eq('移除技能标签回调', skillRemoved, 1);
+const skillTagRawView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [], draft: '', busy: false,
+  skillGroups: chatSkillGroups, skillMenuOpen: false, selectedSkillId: 'ghost-id',
+  onSend: () => {}, onBack: () => {},
+});
+contains('目录缺失时标签兜底显示 id', textOf(findIn(skillTagRawView, 'data-jk-kb-chat-skill-tag', 'ghost-id')), '技能：ghost-id');
+const skillMenuEmptyView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [], draft: '', busy: false,
+  skillGroups: [], skillMenuOpen: true, selectedSkillId: '',
+  onSend: () => {}, onBack: () => {},
+});
+contains('专家未绑技能空提示', textOf(findIn(skillMenuEmptyView, 'data-jk-kb-skill-menu-empty', 'true')), '该专家暂未绑定技能');
+// 语音输入麦克风：支持时渲染、点击回传切换、录音中高亮
+let micToggled = 0;
+const micView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [], draft: '正文', busy: false,
+  speechSupported: true,
+  listening: false,
+  onToggleListening: () => { micToggled += 1; },
+  onSend: () => {}, onBack: () => {},
+});
+eq('支持语音时渲染麦克风', findIn(micView, 'data-jk-kb-chat-mic', 'true').props['aria-label'], '语音输入');
+eq('麦克风未录音态', findIn(micView, 'data-jk-kb-chat-mic', 'true').props['aria-pressed'], false);
+ok('未录音无高亮类', !(findIn(micView, 'data-jk-kb-chat-mic', 'true').props.className || '').includes('jk-kb-chat-mic-on'));
+findIn(micView, 'data-jk-kb-chat-mic', 'true').props.onClick();
+eq('麦克风点击回传', micToggled, 1);
+const micOnView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [], draft: '正文', busy: false,
+  speechSupported: true,
+  listening: true,
+  onToggleListening: () => { micToggled += 1; },
+  onSend: () => {}, onBack: () => {},
+});
+eq('录音中按钮为按下态', findIn(micOnView, 'data-jk-kb-chat-mic', 'true').props['aria-pressed'], true);
+ok('录音中高亮类', (findIn(micOnView, 'data-jk-kb-chat-mic', 'true').props.className || '').includes('jk-kb-chat-mic-on'));
+findIn(micOnView, 'data-jk-kb-chat-mic', 'true').props.onClick();
+eq('录音中点击停止回调', micToggled, 2);
+// 语音状态机：录音/转写/错误反馈渲染对应提示；录音中图标换成停止方块
+const micPhaseView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [], draft: '正文', busy: false,
+  speechSupported: true, listening: true, speechPhase: 'recording',
+  onToggleListening: () => {}, onSend: () => {}, onBack: () => {},
+});
+contains('录音中状态提示', textOf(findIn(micPhaseView, 'data-jk-kb-chat-speech-status', 'recording')), '正在聆听');
+ok('录音中渲染停止方块', !!findIn(micPhaseView, 'data-jk-kb-chat-mic-stop-icon', 'true'));
+eq('录音中麦克风标签', findIn(micPhaseView, 'data-jk-kb-chat-mic', 'true').props['aria-label'], '停止语音输入');
+const micTranscribeView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [], draft: '正文', busy: false,
+  speechSupported: true, listening: false, speechPhase: 'transcribing',
+  onToggleListening: () => {}, onSend: () => {}, onBack: () => {},
+});
+contains('转写中状态提示', textOf(findIn(micTranscribeView, 'data-jk-kb-chat-speech-status', 'transcribing')), '正在转文字');
+const micFeedbackView = I.ExpertChatView({
+  expert: expertsNorm.experts[0],
+  entries: [], draft: '正文', busy: false,
+  speechSupported: true, listening: false, speechPhase: 'feedback',
+  speechMessage: '麦克风权限被拒绝，请在系统设置中允许访问麦克风',
+  onToggleListening: () => {}, onSend: () => {}, onBack: () => {},
+});
+contains('错误反馈提示', textOf(findIn(micFeedbackView, 'data-jk-kb-chat-speech-status', 'feedback')), '麦克风权限被拒绝');
+ok('idle 时不渲染状态提示', flatten(micView).filter((el) => el.props && el.props['data-jk-kb-chat-speech-status'] !== undefined).length === 0);
+// 语音 WAV 编码：16kHz 单声道 PCM16 小端（宿主 speech/transcribe 的规范输入）
+const wavBytes = I.speechEncodeWav(new Float32Array([0, 1, -1, 0.5]));
+const wavView = new DataView(wavBytes.buffer, wavBytes.byteOffset, wavBytes.byteLength);
+eq('WAV 头标识', String.fromCharCode(wavBytes[0], wavBytes[1], wavBytes[2], wavBytes[3]), 'RIFF');
+eq('WAV 声道数 1', wavView.getUint16(22, true), 1);
+eq('WAV 采样率 16k', wavView.getUint32(24, true), 16000);
+eq('WAV 位深 16', wavView.getUint16(34, true), 16);
+eq('WAV 数据长度', wavView.getUint32(40, true), 8);
+eq('WAV 总长 52', wavBytes.byteLength, 52);
+eq('WAV base64 编码', I.speechWavToBase64(new Uint8Array([104, 105])), 'aGk=');
+eq('录音权限错误文案', I.describeRecorderError({ name: 'NotAllowedError' }), '麦克风权限被拒绝，请在系统设置中允许访问麦克风');
+eq('录音设备缺失文案', I.describeRecorderError({ name: 'NotFoundError' }), '未找到可用的麦克风设备');
+eq('录音错误透传消息', I.describeRecorderError({ message: '录音中断' }), '录音中断');
+// 语音桥：setupSpeechBridge 动态注入 remote.speech，挂载/卸载同步可用性并通知订阅者
+let bridgeInject = null;
+I.setupSpeechBridge({
+  inject(deps, callback) { eq('语音桥注入依赖', deps.join(','), 'remote.speech'); bridgeInject = callback; return { dispose() {} }; },
+});
+eq('初始语音 API 不可用', I.getSpeechApi(), null);
+const fakeSpeechApi = { catalog: async () => ({ ok: true }), transcribe: async () => ({ ok: true }) };
+const speechAvailability = [];
+const detachSpeechListener = I.subscribeSpeech((available) => speechAvailability.push(available));
+// cordis 命名空间服务的标准访问路径：fiber 激活后通过 ctx['remote.speech'] 取实例
+const detachBridge = bridgeInject({ 'remote.speech': fakeSpeechApi });
+eq('挂载后语音 API 可用', I.getSpeechApi(), fakeSpeechApi);
+detachBridge();
+eq('卸载后语音 API 不可用', I.getSpeechApi(), null);
+// 兼容路径：链上有 'remote' 注入时 ctx.remote.speech 也能取到
+const detachBridgeAlt = bridgeInject({ remote: { speech: fakeSpeechApi } });
+ok('兼容路径挂载语音 API', I.getSpeechApi() === fakeSpeechApi);
+detachBridgeAlt();
+eq('兼容路径卸载后不可用', I.getSpeechApi(), null);
+detachSpeechListener();
+eq('订阅收到挂载卸载通知', speechAvailability.join(','), 'true,false,true,false');
+// 非法注入体（方法缺失）不算可用
+bridgeInject({ 'remote.speech': { catalog: async () => ({ ok: true }) } });
+eq('方法缺失不挂载', I.getSpeechApi(), null);
+I.setupSpeechBridge({ inject: undefined });
+ok('旧宿主桥接静默降级', I.getSpeechApi() === null);
 const emptyExpertsView = I.ExpertsView(Object.assign({}, {
   status: 'active',
   experts: { phase: 'ready', list: [], error: null },
@@ -2924,7 +3241,7 @@ eq('未指定专家不带 expertId', I.buildCuratePayload({ text: '正文' }).in
 
 // 不新增定时器
 eq('仍无 setInterval( 直呼', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 const expertsSection = source.slice(source.indexOf('function ExpertsPage'), source.indexOf('function ExpertsView'));
 eq('专家页不挂轮询/定时器',
   expertsSection.indexOf('usePollingEffect') < 0 && expertsSection.indexOf('setInterval') < 0 && expertsSection.indexOf('setTimeout') < 0,
@@ -3096,7 +3413,8 @@ const dashboardFixture = {
   },
   maintain: { lastReport: { period: '2026-10', summary: '共 3 条命中', byRule: { M01: 1, M03: 2, M04: 0, M08: 0 } } },
 };
-const dashboard = I.presentDashboard(dashboardFixture);
+// 固定 now 与 fixture 日期（2026-10-15/16/17）配套，避免"近 7 天估算"随真实时间漂移。
+const dashboard = I.presentDashboard(dashboardFixture, Date.parse('2026-10-17T00:00:00Z'));
 eq('仪表盘条目数', dashboard.counts.notes, 128);
 eq('仪表盘顶层目录数', dashboard.counts.dirs, 13);
 eq('仪表盘截断标记', dashboard.counts.truncated, true);
@@ -3145,21 +3463,33 @@ eq('最近入库条数', recentItems.length, 2);
 contains('最近入库标题', textOf(recentItems[0]), '客户访谈');
 contains('最近入库相对路径', textOf(recentItems[0]), '03_内容/客户访谈.md');
 eq('最近入库可复制路径', !!findIn(dashboardView, 'data-jk-kb-recent-copy', '03_内容/客户访谈.md'), true);
-eq('运行状态根目录', textOf(findIn(dashboardView, 'data-jk-kb-runtime', 'root')), '根目录/data/kb');
-contains('运行状态最近 run', textOf(findIn(dashboardView, 'data-jk-kb-runtime', 'lastRun')), '建库');
-contains('运行状态工具注册', textOf(findIn(dashboardView, 'data-jk-kb-runtime', 'tools')), '9 个（失败 0）');
-contains('运行状态子代理', textOf(findIn(dashboardView, 'data-jk-kb-runtime', 'subagents')), '可用');
+eq('仪表盘不再渲染运行状态块（迁至使用信息）', findIn(dashboardView, 'data-jk-kb-runtime', 'root'), undefined);
 contains('最近整理 period', textOf(findIn(dashboardView, 'data-jk-kb-maintain-period', 'true')), '2026-10');
 contains('最近整理 byRule', textOf(findIn(dashboardView, 'data-jk-kb-maintain-rules', 'true')), 'M01=1');
+// 使用信息页：承接仪表盘迁来的运行状态块
+const usageView = I.UsageView({ phase: 'ready', data: dashboard, onRefresh: () => {}, onRetry: () => {} });
+eq('使用信息根目录', textOf(findIn(usageView, 'data-jk-kb-runtime', 'root')), '根目录/data/kb');
+contains('使用信息最近 run', textOf(findIn(usageView, 'data-jk-kb-runtime', 'lastRun')), '建库');
+contains('使用信息工具注册', textOf(findIn(usageView, 'data-jk-kb-runtime', 'tools')), '9 个（失败 0）');
+contains('使用信息子代理', textOf(findIn(usageView, 'data-jk-kb-runtime', 'subagents')), '可用');
+ok('使用信息加载态', !!findIn(I.UsageView({ phase: 'loading', data: null }), 'data-jk-kb-usage-loading', 'true'));
+let usageRetried = 0;
+const usageErrorView = I.UsageView({ phase: 'error', data: null, error: { code: 'host-unreachable', message: '连接被拒绝' }, onRetry: () => { usageRetried += 1; } });
+contains('使用信息不可用文案', textOf(usageErrorView), '使用信息不可用');
+findIn(usageErrorView, 'data-jk-kb-usage-retry', 'true').props.onClick();
+eq('使用信息重试回调', usageRetried, 1);
 const noRegistryView = I.DashboardView({ phase: 'ready', data: dashboard, registryCount: null, onRefresh: () => {}, onRetry: () => {} });
 contains('无自定义技能时只显示 47', textOf(findIn(noRegistryView, 'data-jk-kb-stat', 'skills')), '47');
 contains('无自定义技能副文案', textOf(findIn(noRegistryView, 'data-jk-kb-stat', 'skills')), '内置 47');
 const readyWithoutWeek = I.presentDashboard({ counts: { notes: 0, dirs: 0 }, recent: [], today: {}, health: {}, runtime: {}, maintain: {} });
 eq('缺 weekAdded 用估算', readyWithoutWeek.counts.weekAdded, null);
 const emptyDashboardView = I.DashboardView({ phase: 'ready', data: readyWithoutWeek, registryCount: null, onRefresh: () => {}, onRetry: () => {} });
-contains('仪表盘空态', textOf(findIn(emptyDashboardView, 'data-jk-kb-dashboard-empty', 'true')), '还没有内容');
-contains('recent 空态', textOf(findIn(emptyDashboardView, 'data-jk-kb-recent-empty', 'true')), '还没有内容');
-contains('最近整理空态', textOf(findIn(emptyDashboardView, 'data-jk-kb-maintain-empty', 'true')), '还没有整理报告');
+contains('仪表盘空态大框文案', textOf(findIn(emptyDashboardView, 'data-jk-kb-dashboard-empty', 'true')), '快来放第一篇文档吧');
+eq('仪表盘空态含图标', !!findIn(emptyDashboardView, 'data-jk-kb-dashboard-empty', 'true').children[0], true);
+eq('总空态下最近入库区收起', !!findIn(emptyDashboardView, 'data-jk-kb-recent-empty', 'true'), false);
+eq('总空态不再显示生成时间行', !!findIn(emptyDashboardView, 'data-jk-kb-dashboard-generated', 'true'), false);
+contains('最近整理空态文案', textOf(findIn(emptyDashboardView, 'data-jk-kb-maintain-empty', 'true')), '现在还是空的呢：）');
+eq('最近整理空态含图标', !!findIn(emptyDashboardView, 'data-jk-kb-maintain-empty', 'true').children[0], true);
 let dashboardRetried = 0;
 const dashboardErrorView = I.DashboardView({ phase: 'error', data: null, error: { code: 'host-unreachable', message: '连接被拒绝' }, onRetry: () => { dashboardRetried += 1; } });
 contains('仪表盘不可用文案', textOf(dashboardErrorView), '仪表盘数据不可用');
@@ -3175,6 +3505,137 @@ const dashboardDown = installFetch(() => ({ throw: true }));
 const dashboardDownResult = await I.fetchDashboard();
 dashboardDown.restore();
 eq('仪表盘失败归一', I.normalizeDashboardResponse(dashboardDownResult).ok, false);
+
+// ═════════════════════════ 文件管理：数据层 + 三栏视图 ═════════════════════════
+// 数据归一：目录列表（folders/files 分组、size/mtime 展示化）
+const filesPayload = {
+  ok: true, dir: '03_内容',
+  folders: [{ name: '子目录B' }, { name: '子目录A' }],
+  files: [
+    { name: '笔记.md', ext: '.md', size: 2048, mtimeMs: BASE_MS },
+    { name: '图表.png', ext: '.png', size: 40960, mtimeMs: BASE_MS },
+    { name: '数据.bin', ext: '.bin', size: 512, mtimeMs: BASE_MS },
+  ],
+};
+const filesNorm = I.normalizeFilesResponse(filesPayload);
+eq('目录列表归一成功', filesNorm.ok, true);
+eq('目录列表 dir 透传', filesNorm.data.dir, '03_内容');
+eq('目录条目文件夹数', filesNorm.data.folders.length, 2);
+eq('目录条目文件数', filesNorm.data.files.length, 3);
+eq('文件 size 展示化', filesNorm.data.files[0].sizeText, '2 KB');
+eq('目录列表失败归一', I.normalizeFilesResponse({ ok: false, error: { code: 'dir-out-of-root', message: '越界' } }).error.code, 'dir-out-of-root');
+// 预览归一：text / image / binary / too-large 四分支
+const textPreview = I.presentFilePreview({ ok: true, kind: 'text', path: '03_内容/笔记.md', name: '笔记.md', ext: '.md', size: 12, mtimeMs: BASE_MS, text: '# 标题' });
+eq('text 预览 kind', textPreview.kind, 'text');
+eq('text 预览正文', textPreview.text, '# 标题');
+const imagePreview = I.presentFilePreview({ ok: true, kind: 'image', name: '图表.png', ext: '.png', dataUrl: 'data:image/png;base64,xxx' });
+eq('image 预览 kind', imagePreview.kind, 'image');
+contains('image 预览 dataUrl', imagePreview.dataUrl, 'data:image/png');
+eq('未知 kind 回落 binary', I.presentFilePreview({ kind: 'weird' }).kind, 'binary');
+eq('预览失败归一', I.normalizeFileResponse({ ok: false, error: { code: 'file-not-found', message: '没了' } }).ok, false);
+// 请求 URL：dir / path 均需 encode
+const filesFetch = installFetch(() => ({ body: { ok: true, folders: [], files: [] } }));
+await I.fetchFiles('03_内容/子目录A');
+await I.fetchFileEntry('03_内容/笔记.md');
+filesFetch.restore();
+eq('目录列表请求 URL', filesFetch.calls[0].url, I.HOST_FILES_PATH + '?dir=' + encodeURIComponent('03_内容/子目录A'));
+eq('文件预览请求 URL', filesFetch.calls[1].url, I.HOST_FILE_PATH + '?path=' + encodeURIComponent('03_内容/笔记.md'));
+eq('文件请求 GET', filesFetch.calls[1].init.method, 'GET');
+
+// 三栏视图：左树 + 中列表 + 右预览（回调驱动）
+const filesViewData = I.presentFiles(filesPayload);
+let openedDir = '';
+let openedFile = '';
+let toggledDir = '';
+let wentUp = 0;
+const filesReadyView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': ['03_内容'], '03_内容': ['子目录A', '子目录B'] },
+  expanded: { '': true, '03_内容': true },
+  currentDir: '03_内容',
+  preview: { phase: 'ready', path: '03_内容/笔记.md', data: textPreview, error: null },
+  onOpenDir: (dir) => { openedDir = dir; },
+  onToggleDir: (dir) => { toggledDir = dir; },
+  onGoUp: () => { wentUp += 1; },
+  onOpenFile: (rel) => { openedFile = rel; },
+  onRefresh: () => {},
+});
+ok('文件管理根容器', !!findIn(filesReadyView, 'data-jk-kb-files', 'true'));
+eq('文件管理 phase 标记', findIn(filesReadyView, 'data-jk-kb-files', 'true').props['data-jk-kb-files-phase'], 'ready');
+ok('左树面板存在', !!findIn(filesReadyView, 'data-jk-kb-file-tree', 'true'));
+ok('中栏列表面板存在', !!findIn(filesReadyView, 'data-jk-kb-files-list', 'true'));
+ok('右栏预览面板存在', !!findIn(filesReadyView, 'data-jk-kb-file-preview', 'true'));
+// 左树：根节点 + 展开的 03_内容 子节点
+ok('树根节点', !!findIn(filesReadyView, 'data-jk-kb-file-tree-dir', 'root'));
+ok('树子目录节点', !!findIn(filesReadyView, 'data-jk-kb-file-tree-dir', '03_内容'));
+ok('树孙节点渲染', !!findIn(filesReadyView, 'data-jk-kb-file-tree-dir', '03_内容/子目录A'));
+eq('树节点选中态', findIn(filesReadyView, 'data-jk-kb-file-tree-label', '03_内容').props['aria-current'], 'true');
+findIn(filesReadyView, 'data-jk-kb-file-tree-label', '03_内容/子目录B').props.onClick();
+eq('树节点点击导航', openedDir, '03_内容/子目录B');
+findIn(filesReadyView, 'data-jk-kb-file-tree-caret', '03_内容').props.onClick();
+eq('树箭头点击切换', toggledDir, '03_内容');
+// 中栏：面包屑 + 文件夹/文件条目 + 回调
+eq('面包屑当前目录', textOf(findIn(filesReadyView, 'data-jk-kb-files-crumb', 'true')), '/03_内容');
+eq('中栏文件夹条目', findIn(filesReadyView, 'data-jk-kb-file-entry', 'dir').props['data-jk-kb-file-entry-name'], '子目录B');
+eq('中栏文件条目存在', !!findIn(filesReadyView, 'data-jk-kb-file-entry', 'file'), true);
+eq('中栏文件名标记', findIn(filesReadyView, 'data-jk-kb-file-entry-name', '笔记.md').props['data-jk-kb-file-entry'], 'file');
+findIn(filesReadyView, 'data-jk-kb-file-entry-name', '子目录A').props.onClick();
+eq('中栏文件夹点击进目录', openedDir, '03_内容/子目录A');
+findIn(filesReadyView, 'data-jk-kb-file-entry-name', '数据.bin').props.onClick();
+eq('中栏文件点击预览', openedFile, '03_内容/数据.bin');
+eq('根目录时上一级禁用', findIn(filesReadyView, 'data-jk-kb-files-up', 'true').props.disabled, false);
+findIn(filesReadyView, 'data-jk-kb-files-up', 'true').props.onClick();
+eq('上一级回调', wentUp, 1);
+// 右栏：text 分支 → pre 原文
+contains('text 预览元信息', textOf(findIn(filesReadyView, 'data-jk-kb-file-preview-meta', 'true')), '笔记.md');
+eq('text 预览渲染 pre', findIn(filesReadyView, 'data-jk-kb-file-preview-text', 'true').type, 'pre');
+eq('text 预览正文', textOf(findIn(filesReadyView, 'data-jk-kb-file-preview-text', 'true')), '# 标题');
+// image 分支 → img[dataUrl]
+const filesImageView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': [] }, expanded: { '': true }, currentDir: '',
+  preview: { phase: 'ready', path: '图表.png', data: imagePreview, error: null },
+});
+eq('image 预览渲染 img', findIn(filesImageView, 'data-jk-kb-file-preview-image', 'true').type, 'img');
+eq('image 预览 src', findIn(filesImageView, 'data-jk-kb-file-preview-image', 'true').props.src, 'data:image/png;base64,xxx');
+eq('image 分支不渲染 pre', !!findIn(filesImageView, 'data-jk-kb-file-preview-text', 'true'), false);
+// binary / too-large 分支 → 元信息提示
+const filesBinaryView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': [] }, expanded: { '': true }, currentDir: '',
+  preview: { phase: 'ready', path: '数据.bin', data: I.presentFilePreview({ kind: 'binary', name: '数据.bin', size: 512, mtimeMs: BASE_MS }), error: null },
+});
+ok('binary 分支提示', !!findIn(filesBinaryView, 'data-jk-kb-file-preview-binary', 'true'));
+const filesLargeView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': [] }, expanded: { '': true }, currentDir: '',
+  preview: { phase: 'ready', path: '大文件.md', data: I.presentFilePreview({ kind: 'too-large', name: '大文件.md', size: 3 * 1024 * 1024, mtimeMs: BASE_MS }), error: null },
+});
+ok('too-large 分支提示', !!findIn(filesLargeView, 'data-jk-kb-file-preview-toolarge', 'true'));
+// 预览 idle / loading / error 三态
+const filesIdleView = I.FilesView({ list: { phase: 'ready', data: filesViewData, error: null }, tree: { '': [] }, expanded: { '': true }, currentDir: '', preview: { phase: 'idle' } });
+ok('未选文件占位', !!findIn(filesIdleView, 'data-jk-kb-file-preview-idle', 'true'));
+ok('预览加载态', !!I.FilesView({ list: { phase: 'loading' }, preview: { phase: 'loading' } }) && !!findIn(I.FilesView({ list: { phase: 'ready', data: filesViewData, error: null }, tree: { '': [] }, expanded: { '': true }, currentDir: '', preview: { phase: 'loading' } }), 'data-jk-kb-file-preview-loading', 'true'));
+const filesPvErrorView = I.FilesView({ list: { phase: 'ready', data: filesViewData, error: null }, tree: { '': [] }, expanded: { '': true }, currentDir: '', preview: { phase: 'error', error: { code: 'file-not-found', message: '文件不存在' } } });
+eq('预览错误码标记', findIn(filesPvErrorView, 'data-jk-kb-file-preview-error', 'file-not-found').props['data-jk-kb-file-preview-error'], 'file-not-found');
+contains('预览错误文案', textOf(filesPvErrorView), '文件读取失败');
+// 目录列表 loading / error / 空态
+ok('目录加载态', !!findIn(I.FilesView({ list: { phase: 'loading' }, preview: { phase: 'idle' } }), 'data-jk-kb-files-loading', 'true'));
+const filesListErrorView = I.FilesView({ list: { phase: 'error', error: { code: 'dir-out-of-root', message: '越界' } }, preview: { phase: 'idle' } });
+eq('目录错误码标记', findIn(filesListErrorView, 'data-jk-kb-files-error', 'dir-out-of-root').props['data-jk-kb-files-error'], 'dir-out-of-root');
+contains('目录错误文案', textOf(filesListErrorView), '目录读取失败');
+const filesEmptyView = I.FilesView({ list: { phase: 'ready', data: I.presentFiles({ ok: true, folders: [], files: [] }), error: null }, tree: { '': [] }, expanded: { '': true }, currentDir: '空目录', preview: { phase: 'idle' } });
+contains('空目录文案', textOf(findIn(filesEmptyView, 'data-jk-kb-files-empty', 'true')), '这个目录是空的');
+eq('空目录上一级可用', findIn(filesEmptyView, 'data-jk-kb-files-up', 'true').props.disabled, false);
+// 根目录时上一级禁用
+const filesRootView = I.FilesView({ list: { phase: 'ready', data: filesViewData, error: null }, tree: { '': [] }, expanded: { '': true }, currentDir: '', preview: { phase: 'idle' } });
+eq('根目录禁用上一级', findIn(filesRootView, 'data-jk-kb-files-up', 'true').props.disabled, true);
+// 回归防护：FilesPage 直调不抛（初始 loading + idle 预览）
+let filesRendered = null;
+let filesRenderError = '';
+try { filesRendered = I.FilesPage(); } catch (err) { filesRenderError = String(err && err.message); }
+ok('FilesPage 可完整渲染（无未定义引用）', !!filesRendered && findIn(filesRendered, 'data-jk-kb-files', 'true') !== undefined, filesRenderError);
+eq('FilesPage 初始为目录加载态', findIn(filesRendered, 'data-jk-kb-files', 'true').props['data-jk-kb-files-phase'], 'loading');
 
 // M06 目录归档按钮文案
 const dirButtonView = I.ReportsView({
@@ -3194,7 +3655,7 @@ eq('M07 按钮标记为 file', findIn(dirButtonView, 'data-jk-kb-archive-button'
 
 // 不新增定时器
 eq('仍无 setInterval( 直呼', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 const dashboardSection = source.slice(source.indexOf('function DashboardPage'), source.indexOf('function DashboardView'));
 eq('仪表盘不挂轮询/定时器',
   dashboardSection.indexOf('usePollingEffect') < 0 && dashboardSection.indexOf('setInterval') < 0 && dashboardSection.indexOf('setTimeout') < 0,
@@ -3203,9 +3664,10 @@ eq('仪表盘不挂轮询/定时器',
 // ═════════════════════════ 21. 未配根目录骨架态 ═════════════════════════
 // 菜单按 rootStatus 过滤（数据仍来自 MENUS）
 eq('no-root 只显示仪表盘', I.visibleMenus('no-root').map((menu) => menu.id).join(','), 'dashboard');
-eq('ready 显示三条', I.visibleMenus('ready').length, 3);
-eq('error 保持三条', I.visibleMenus('error').length, 3);
-eq('loading 保持三条', I.visibleMenus('loading').length, 3);
+eq('ready 显示五条', I.visibleMenus('ready').length, 5);
+eq('error 保持五条', I.visibleMenus('error').length, 5);
+eq('loading 保持五条', I.visibleMenus('loading').length, 5);
+eq('no-root 态文件管理被过滤', I.visibleMenus('no-root').some((menu) => menu.id === I.FILES_ID), false);
 const noRootNav = I.MenusNav({ rootStatus: 'no-root', activeId: 'dashboard', onSelect: () => {} });
 const noRootMenuButtons = flatten(noRootNav).filter((el) => el.props && el.props['data-jk-kb-menu'] !== undefined);
 eq('骨架态菜单条数', noRootMenuButtons.length, 1);
@@ -3213,11 +3675,62 @@ eq('骨架态菜单 id', noRootMenuButtons[0].props['data-jk-kb-menu'], 'dashboa
 eq('骨架态菜单文案', textOf(noRootMenuButtons[0]), '仪表盘');
 const navSelects = [];
 const readyNav = I.MenusNav({ rootStatus: 'ready', activeId: 'tasks', onSelect: (id) => navSelects.push(id) });
-eq('已配置菜单三条', flatten(readyNav).filter((el) => el.props && el.props['data-jk-kb-menu'] !== undefined).length, 3);
+eq('已配置菜单五条', flatten(readyNav).filter((el) => el.props && el.props['data-jk-kb-menu'] !== undefined).length, 5);
 findIn(readyNav, 'data-jk-kb-menu', 'tasks').props.onClick();
 eq('菜单点击回调', navSelects.join(','), 'tasks');
+// 回归防护：侧栏菜单纵向排布（shadcn SidebarMenu 为纵向 ul），曾被默认横向 pills 挤成一行。
+ok('侧栏菜单纵向排布', flatten(readyNav).some((el) => el.type === 'ul' && String(el.props.className).indexOf('jk-kb-sidebar-menu') >= 0));
 const fallbackNav = I.MenusNav({ rootStatus: 'no-root', activeId: 'tasks' });
 eq('选中项不可见时回落到仪表盘', findIn(fallbackNav, 'data-jk-kb-menu', 'dashboard').props['aria-current'], 'page');
+
+// ── shadcn/ui Sidebar 结构：品牌头 / 菜单 icon / 分组标题 / footer 时钟 ──
+const readyMenuButtons = flatten(readyNav).filter((el) => el.props && el.props['data-jk-kb-menu'] !== undefined);
+eq('菜单按钮数与菜单数一致', readyMenuButtons.length, I.MENUS.length);
+// 每个菜单按钮内都有线稿图标（data-jk-kb-menu-icon）
+const menuIcons = flatten(readyNav).filter((el) => el.props && el.props['data-jk-kb-menu-icon'] === 'true');
+eq('每个菜单都有 icon', menuIcons.length, 5);
+ok('菜单 icon 是 svg 线稿', menuIcons.every((icon) => icon.type === 'svg'));
+eq('no-root 态只留仪表盘 icon', flatten(noRootNav).filter((el) => el.props && el.props['data-jk-kb-menu-icon'] === 'true').length, 1);
+// active 态标记：data-active + active 类（shadcn SidebarMenuButton 同款）
+eq('选中菜单 data-active', findIn(readyNav, 'data-jk-kb-menu', 'tasks').props['data-active'], 'true');
+contains('选中菜单 active 类', findIn(readyNav, 'data-jk-kb-menu', 'tasks').props.className, 'jk-kb-sidebar-menu-button-active');
+eq('未选中菜单 data-active=false', findIn(readyNav, 'data-jk-kb-menu', 'dashboard').props['data-active'], 'false');
+// 菜单组：SidebarGroup 结构 + 分组标签
+ok('菜单组是 SidebarGroup', findIn(readyNav, 'data-jk-kb-sidebar-group', 'true') !== undefined);
+ok('菜单组带菜单组标记', findIn(readyNav, 'data-jk-kb-menu-group', 'true') !== undefined);
+// 品牌 Logo 图标渲染（星球填充图标：1024 画布、fill=currentColor）
+const logoEl = I.BrandLogoMark({ width: 18, height: 18 });
+ok('品牌 Logo 是 svg', logoEl.type === 'svg');
+ok('品牌 Logo 带图标标记', logoEl.props['data-jk-kb-menu-icon'] === 'true');
+eq('品牌 Logo 1024 画布', logoEl.props.viewBox, '0 0 1024 1024');
+eq('品牌 Logo 填充色跟随 currentColor', logoEl.props.fill, 'currentColor');
+ok('品牌 Logo path 数据非空', Array.isArray(logoEl.children) && logoEl.children.length === 1 && logoEl.children[0].type === 'path' && typeof logoEl.children[0].props.d === 'string' && logoEl.children[0].props.d.length > 1000);
+// Sidebar 结构薄壳
+ok('SidebarHeader 薄壳', I.SidebarHeader().props['data-jk-kb-sidebar-header'] === 'true');
+// shadcn/ui Table 结构薄壳：语义化标签 + 标记 + className 合并
+ok('Table 薄壳是 table', I.Table().type === 'table');
+ok('TableHeader 薄壳是 thead', I.TableHeader().type === 'thead');
+ok('TableBody 薄壳是 tbody', I.TableBody().type === 'tbody');
+ok('TableRow 薄壳是 tr', I.TableRow().type === 'tr');
+ok('TableHead 薄壳是 th', I.TableHead().type === 'th');
+ok('TableCell 薄壳是 td', I.TableCell().type === 'td');
+eq('TableRow 默认类名', I.TableRow().props.className, 'jk-kb-table-row');
+eq('TableRow 附加类名合并', I.TableRow({ className: 'extra' }).props.className, 'jk-kb-table-row extra');
+ok('SidebarContent 薄壳', I.SidebarContent().props['data-jk-kb-sidebar-content'] === 'true');
+ok('SidebarFooter 薄壳', I.SidebarFooter().props['data-jk-kb-sidebar-footer'] === 'true');
+ok('SidebarGroupLabel 薄壳', I.SidebarGroupLabel(null, '执行任务').props['data-jk-kb-sidebar-group-label'] === 'true');
+eq('SidebarMenuButton 默认非选中', I.SidebarMenuButton({}).props['data-active'], 'false');
+eq('SidebarMenuButton 选中', I.SidebarMenuButton({ active: true }).props['data-active'], 'true');
+// footer 数字时钟：纯函数格式 + 渲染标记
+eq('时钟格式补零', I.formatClockText(new Date(2026, 9, 24, 15, 4, 7)), '15:04:07');
+eq('时钟格式零点', I.formatClockText(new Date(2026, 9, 24, 0, 0, 0)), '00:00:00');
+const clockEl = I.SidebarClock();
+ok('时钟渲染标记', clockEl.props['data-jk-kb-sidebar-clock'] === 'true');
+ok('时钟文本 HH:MM:SS', /^\d{2}:\d{2}:\d{2}$/.test(textOf(clockEl)));
+eq('时钟 role=timer', clockEl.props.role, 'timer');
+// 执行任务分组：SidebarGroupLabel 替代原 h2 标题（内联两条 runs，避免依赖后文夹具）
+const sidebarGroupView = I.SidebarTasks({ feed: { phase: 'ready', runs: [{ id: 'r1', kind: 'curate', status: 'running', startedAt: '2026-10-24T10:00:00+08:00' }], error: null } });
+contains('任务分组标题', textOf(findIn(sidebarGroupView, 'data-jk-kb-sidebar-group-label', 'true')), '执行任务');
 
 // 执行任务骨架
 const taskSkeleton = I.TaskListSkeleton();
@@ -3259,19 +3772,19 @@ ok('no-root 引导条', !!findIn(noRootPanel, 'data-jk-kb-guide-bar', 'no-root')
 eq('渲染 no-root 树不发起任何请求', noRootFetch.calls.length, 0);
 noRootFetch.restore();
 const mountedTypes = flatten(noRootPanel).map((el) => el.type).filter((type) => typeof type === 'function');
-eq('no-root 不挂 Dashboard/Tasks/Experts 组件',
+eq('no-root 不挂 Dashboard/Tasks/Experts/Files 组件',
   mountedTypes.filter((type) => type === I.DashboardPage || type === I.TasksPage || type === I.ExpertsPage
-    || type === I.RunsBoardPage || type === I.SkillViewPage || type === I.LedgerCalendarPage).length, 0);
+    || type === I.RunsBoardPage || type === I.SkillViewPage || type === I.LedgerCalendarPage || type === I.FilesPage).length, 0);
 eq('no-root 不渲染真实仪表盘标记', findIn(noRootPanel, 'data-jk-kb-dashboard', 'true'), undefined);
 
 // 已配根目录：正常数据组件，无骨架
 const readyPanel = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[0] });
 eq('已配置渲染 DashboardPage', readyPanel.type, I.DashboardPage);
 eq('已配置无骨架', findIn(readyPanel, 'data-jk-kb-skeleton', 'dashboard'), undefined);
-const readyTasksPanel = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[2] });
+const readyTasksPanel = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[3] });
 eq('已配置任务页仍是 TasksPage', readyTasksPanel.type, I.TasksPage);
-const readyExpertsPanel = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[1] });
-eq('已配置专家页仍是 ExpertsPage', readyExpertsPanel.type, I.ExpertsPage);
+const readyUsagePanel = I.PanelContent({ rootStatus: 'ready', root: '/data/kb', activeMenu: I.MENUS[4] });
+eq('已配置使用信息页是 UsagePage', readyUsagePanel.type, I.UsagePage);
 
 // 宿主不可用：整块错误卡 + 重试，不用骨架
 let hostRetried = 0;
@@ -3345,7 +3858,8 @@ findIn(sidebarError, 'data-jk-kb-sidebar-tasks-retry', 'true').props.onClick();
 eq('侧栏重试回调', sidebarRetried, 1);
 eq('失败态不渲染示例任务', textOf(sidebarError).indexOf('整理本周新增笔记'), -1);
 const sidebarEmpty = I.SidebarTasks({ feed: { phase: 'ready', runs: [], error: null } });
-contains('侧栏空态', textOf(findIn(sidebarEmpty, 'data-jk-kb-sidebar-tasks-empty', 'true')), '还没有任务');
+contains('侧栏空态', textOf(findIn(sidebarEmpty, 'data-jk-kb-sidebar-tasks-empty', 'true')), '暂无任务');
+eq('侧栏空态含图标', !!findIn(sidebarEmpty, 'data-jk-kb-sidebar-tasks-empty', 'true').children[0], true);
 eq('示例常量已移除 STATS', I.STATS, undefined);
 eq('示例常量已移除 RECENT', I.RECENT, undefined);
 eq('示例常量已移除 RUNTIME', I.RUNTIME, undefined);
@@ -3355,7 +3869,7 @@ eq('任务页可用侧栏种子数据', seededRunsState.phase, 'ready');
 eq('种子数据条数', seededRunsState.runs.length, 2);
 eq('失败态样式存在', source.indexOf('data-jk-kb-sidebar-task-status="failed"') >= 0, true);
 eq('仍无 setInterval( 直呼', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 
 // ═════════════════════════ 22. doctor 体检修复入口 ═════════════════════════
 // 模型归一
@@ -3562,7 +4076,7 @@ ok('任务页头仍有视图切换', !!findIn(tasksHeader, 'data-jk-kb-view-tab'
 
 // 不新增定时器
 eq('仍无 setInterval( 直呼', (source.match(/setInterval\s*\(/g) || []).length, 0);
-eq('轮询调用点仍是既有三处', (source.match(/usePollingEffect\s*\(/g) || []).length, 3);
+eq('轮询调用点四处', (source.match(/usePollingEffect\s*\(/g) || []).length, 4);
 const doctorSection = source.slice(source.indexOf('function DoctorPanel'), source.indexOf('function DoctorView'));
 eq('doctor 面板不挂轮询/定时器',
   doctorSection.indexOf('usePollingEffect') < 0 && doctorSection.indexOf('setInterval') < 0 && doctorSection.indexOf('setTimeout') < 0,
@@ -3578,7 +4092,7 @@ ok('根目录区仍有 data-jk-kb-ack', !!findIn(rootSection, 'data-jk-kb-ack', 
 const taskList = I.TaskList({ tasks: I.TASKS, limit: 3, expanded: false });
 ok('任务区仍有 data-jk-kb-more', !!findIn(taskList, 'data-jk-kb-more', 'more'));
 ok('样式常量仍是字符串', typeof I.SETTINGS_STYLE === 'string' && typeof I.PANEL_STYLE === 'string');
-ok('面板样式新增 jk-kb- 前缀类', I.PANEL_STYLE.indexOf('.jk-kb-run-row') >= 0);
+ok('面板样式新增 jk-kb- 前缀类', I.PANEL_STYLE.indexOf('.jk-kb-table-row') >= 0);
 ok('样式只用 var(--dsw-alias-*) 颜色', I.PANEL_STYLE.indexOf('--dsw-alias-') >= 0);
 ok('样式未写死十六进制颜色', !/#[0-9a-fA-F]{3,6}/.test(I.PANEL_STYLE));
 

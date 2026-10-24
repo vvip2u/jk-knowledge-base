@@ -146,7 +146,7 @@ ok('源码未使用 new Function(...) 调用', !/new\s+Function\s*\(/.test(sourc
 ok('源码未触碰 document.body', !/document\s*\.\s*body/.test(source));
 
 // ─────────────────── 2. 清单契约（package.json / 常量） ───────────────────
-eq('package.json version', pkg.version, '1.0.0');
+eq('package.json version', pkg.version, '1.1.1');
 eq('client 常量 PLUGIN_VERSION 与 package.json 一致', I.PLUGIN_VERSION, pkg.version);
 eq('display 名称', I.PLUGIN_NAME, 'JK知识库');
 eq('panel id 与包名一致', I.PANEL_ID, 'jk-knowledge-base');
@@ -171,7 +171,7 @@ const grepTokens = [
   'key: PANEL_ID',
   "'启动JK知识库'",
   "'jk-kb-meta'",
-  "PLUGIN_VERSION = '1.0.0'",
+  "PLUGIN_VERSION = '1.1.1'",
 ];
 grepTokens.forEach((token) => {
   ok('client.js 可 grep 到 ' + token, source.indexOf(token) >= 0);
@@ -364,7 +364,7 @@ eq('Switch 默认 aria-checked=false', switchOff.props['aria-checked'], false);
 eq('Switch 默认 data 标记 off', switchOff.props['data-jk-kb-switch'], 'off');
 eq('设置页标签文案「启动JK知识库」', textOf(findIn(settingsTreeOff, 'className', 'jk-kb-switch-label')), '启动JK知识库');
 eq('设置页默认 data-jk-kb-enabled=off', flatten(settingsTreeOff).find((el) => el.props && el.props['data-jk-kb-settings'] === 'true').props['data-jk-kb-enabled'], 'off');
-eq('设置页右下角版本号文案', textOf(findIn(settingsTreeOff, 'data-jk-kb-version', I.PLUGIN_VERSION)), 'JK知识库 v1.0.0');
+eq('设置页右下角版本号文案', textOf(findIn(settingsTreeOff, 'data-jk-kb-version', I.PLUGIN_VERSION)), 'JK知识库 v' + I.PLUGIN_VERSION);
 ok('设置页存在 jk-kb-meta 容器', !!findIn(settingsTreeOff, 'data-jk-kb-meta', 'true'));
 
 switchOff.props.onClick();
@@ -482,12 +482,16 @@ ok('截断时显示「已截断」徽标', !!findIn(dashboardTree, 'data-jk-kb-t
 
 const recentItems = flatten(dashboardTree).filter((el) => el.props && el.props['data-jk-kb-recent'] !== undefined);
 eq('最近入库列表条数', recentItems.length, dashRaw.recent.length);
-ok('运行状态块存在', !!findIn(dashboardTree, 'data-jk-kb-block', 'runtime'));
-ok('运行状态行渲染 store guard', textOf(findIn(dashboardTree, 'data-jk-kb-runtime', 'storeGuard')).indexOf('ready') >= 0);
+eq('仪表盘不再渲染运行状态块（已迁至使用信息页）', findIn(dashboardTree, 'data-jk-kb-block', 'runtime'), undefined);
+const usageTree = I.UsageView({ phase: 'ready', data: dashNorm.data });
+ok('使用信息页渲染运行状态块', !!findIn(usageTree, 'data-jk-kb-block', 'runtime'));
+ok('使用信息 store guard 行', textOf(findIn(usageTree, 'data-jk-kb-runtime', 'storeGuard')).indexOf('ready') >= 0);
 ok('最近整理块渲染最新报告', textOf(findIn(dashboardTree, 'data-jk-kb-maintain-summary', 'true')).indexOf('M01=2') >= 0);
 ok('页面渲染 ready 相位', findIn(dashboardTree, 'data-jk-kb-dashboard', 'true') && findIn(dashboardTree, 'data-jk-kb-dashboard-phase', 'ready') !== false);
 ok('主页面配置读取中不白屏（渲染 loading 文案）', !!findIn(panelTree, 'data-jk-kb-root-loading', 'true'));
-ok('标题行文本为「知识库」', textOf(flatten(panelTree).find((el) => el.props && el.props.className === 'jk-kb-title')) === '知识库');
+ok('主页面不再渲染「知识库」大标题行（已按需求移除）', flatten(panelTree).every((el) => !el.props || el.props.className !== 'jk-kb-title'));
+ok('主页面顶部导航渲染（知识库/文档）', !!findIn(panelTree, 'data-jk-kb-nav', 'knowledge-base') && !!findIn(panelTree, 'data-jk-kb-nav', 'docs'));
+ok('顶部导航「知识库」为当前项', findIn(panelTree, 'data-jk-kb-nav', 'knowledge-base').props['data-active'] === 'true');
 
 // 占位页：将来加菜单自动落到这里
 const placeholderTree = I.PlaceholderPage({ id: 'archive', label: '归档' });
@@ -564,7 +568,7 @@ const hostApplyCtx = {
 let hostApplyThrew = null;
 try { hostIndex.apply(hostApplyCtx, {}); } catch (err) { hostApplyThrew = err; }
 eq('host apply(假 webServer) 不抛异常', hostApplyThrew, null);
-eq('注册 19 条路由（+ /dashboard + /doctor + /doctor/repair）', hostRegistered.length, 19);
+eq('注册 21 条路由（+ /dashboard + /doctor + /doctor/repair + /files + /file）', hostRegistered.length, 21);
 deepEq('路由 path/kind 列表', hostRegistered.map((spec) => spec.kind + ' ' + spec.path).sort(), [
   'exact /plugins/jk-knowledge-base/config',
   'exact /plugins/jk-knowledge-base/config/validate',
@@ -572,6 +576,8 @@ deepEq('路由 path/kind 列表', hostRegistered.map((spec) => spec.kind + ' ' +
   'exact /plugins/jk-knowledge-base/doctor',
   'exact /plugins/jk-knowledge-base/doctor/repair',
   'exact /plugins/jk-knowledge-base/experts',
+  'exact /plugins/jk-knowledge-base/file',
+  'exact /plugins/jk-knowledge-base/files',
   'exact /plugins/jk-knowledge-base/health',
   'exact /plugins/jk-knowledge-base/ledger/calendar',
   'exact /plugins/jk-knowledge-base/ledger/day',
@@ -882,12 +888,64 @@ const cfgVault = await callHandler(handlers.config, { method: 'GET' });
 eq('已建 vault.json 时 discovery.vault=true', cfgVault.json.discovery.vault, true);
 ok('vaultPath 指向 .jkkb/vault.json', String(cfgVault.json.discovery.vaultPath).endsWith(path.join('.jkkb', 'vault.json')), String(cfgVault.json.discovery.vaultPath));
 
+// ── 文件管理路由：目录列表 + 文件预览（防穿越 / 隐藏文件过滤 / 格式分支）──
+const filesRoot = makeTmpDir('jkkb-files-root-');
+fs.mkdirSync(path.join(filesRoot, '03_内容'), { recursive: true });
+fs.mkdirSync(path.join(filesRoot, '03_内容', '子目录A'), { recursive: true });
+fs.writeFileSync(path.join(filesRoot, '03_内容', '笔记.md'), '# 你好', 'utf8');
+fs.writeFileSync(path.join(filesRoot, '03_内容', '图表.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+fs.writeFileSync(path.join(filesRoot, '03_内容', '数据.bin'), Buffer.from([0x00, 0x01]));
+fs.writeFileSync(path.join(filesRoot, '.hidden'), 'x', 'utf8');
+const filesStore = hostConfig.createSettingsStore({ file: path.join(makeTmpDir('jkkb-files-store-'), 'settings.json') });
+filesStore.save({ root: filesRoot, rootConfirmedAt: '2026-10-17T05:00:00.000Z', rootRiskAck: { at: '2026-10-17T05:00:00.000Z', version: 1, textHash: 'x' } });
+const filesHandlers = hostRoutes.createHandlers({ store: filesStore });
+
+const filesListRoot = await callHandler(filesHandlers.filesList, { method: 'GET', url: '/plugins/jk-knowledge-base/files?dir=' });
+eq('files 根目录 → 200', filesListRoot.status, 200);
+eq('files 根目录 ok', filesListRoot.json.ok, true);
+eq('files 根目录 dir 为空串', filesListRoot.json.dir, '');
+eq('files 根目录只见 03_内容（隐藏文件过滤）', JSON.stringify(filesListRoot.json.folders.map((f) => f.name)), '["03_内容"]');
+eq('files 根目录无文件', filesListRoot.json.files.length, 0);
+const filesListSub = await callHandler(filesHandlers.filesList, { method: 'GET', url: '/plugins/jk-knowledge-base/files?dir=' + encodeURIComponent('03_内容') });
+eq('files 子目录文件夹', JSON.stringify(filesListSub.json.folders.map((f) => f.name)), '["子目录A"]');
+eq('files 子目录文件含 ext/size', filesListSub.json.files[0].name, '笔记.md');
+eq('files 子目录文件 ext', filesListSub.json.files[0].ext, '.md');
+ok('files 子目录文件 size 为数值', typeof filesListSub.json.files[0].size === 'number' && filesListSub.json.files[0].size > 0);
+const filesListEscape = await callHandler(filesHandlers.filesList, { method: 'GET', url: '/plugins/jk-knowledge-base/files?dir=' + encodeURIComponent('../') });
+eq('files 穿越 → 400', filesListEscape.status, 400);
+eq('files 穿越 错误码', filesListEscape.json.error.code, 'dir-out-of-root');
+const filesListMissing = await callHandler(filesHandlers.filesList, { method: 'GET', url: '/plugins/jk-knowledge-base/files?dir=' + encodeURIComponent('不存在') });
+eq('files 目录不存在 → 404', filesListMissing.status, 404);
+const filesListMethod = await callHandler(filesHandlers.filesList, { method: 'POST', body: {} });
+eq('files 非 GET → 405', filesListMethod.status, 405);
+const filesNoRoot = await callHandler(hostRoutes.createHandlers({ store: hostConfig.createSettingsStore({ file: path.join(makeTmpDir('jkkb-files-noroot-'), 'settings.json') }) }).filesList, { method: 'GET' });
+eq('files 未配根目录 → 409', filesNoRoot.status, 409);
+
+const fileText = await callHandler(filesHandlers.fileEntry, { method: 'GET', url: '/plugins/jk-knowledge-base/file?path=' + encodeURIComponent('03_内容/笔记.md') });
+eq('file 文本 → 200', fileText.status, 200);
+eq('file 文本 kind=text', fileText.json.kind, 'text');
+eq('file 文本正文', fileText.json.text, '# 你好');
+eq('file 文本 path 规范化', fileText.json.path, '03_内容/笔记.md');
+const fileImage = await callHandler(filesHandlers.fileEntry, { method: 'GET', url: '/plugins/jk-knowledge-base/file?path=' + encodeURIComponent('03_内容/图表.png') });
+eq('file 图片 kind=image', fileImage.json.kind, 'image');
+ok('file 图片 dataUrl 前缀', String(fileImage.json.dataUrl).indexOf('data:image/png;base64,') === 0, String(fileImage.json.dataUrl).slice(0, 30));
+const fileBinary = await callHandler(filesHandlers.fileEntry, { method: 'GET', url: '/plugins/jk-knowledge-base/file?path=' + encodeURIComponent('03_内容/数据.bin') });
+eq('file 二进制 kind=binary', fileBinary.json.kind, 'binary');
+eq('file 二进制不带正文', fileBinary.json.text, undefined);
+const fileEscape = await callHandler(filesHandlers.fileEntry, { method: 'GET', url: '/plugins/jk-knowledge-base/file?path=' + encodeURIComponent('../../etc/passwd') });
+eq('file 穿越 → 400', fileEscape.status, 400);
+eq('file 穿越 错误码', fileEscape.json.error.code, 'path-out-of-root');
+const fileMissing = await callHandler(filesHandlers.fileEntry, { method: 'GET', url: '/plugins/jk-knowledge-base/file?path=' + encodeURIComponent('03_内容/不存在.md') });
+eq('file 不存在 → 404', fileMissing.status, 404);
+const fileMethod = await callHandler(filesHandlers.fileEntry, { method: 'POST', body: {} });
+eq('file 非 GET → 405', fileMethod.status, 405);
+
 deepEq('缺 webServer 时 registerRoutes 返回空数组', hostRoutes.registerRoutes({}, { store: routeStore }), []);
 const regSpecs = [];
 const wsCtx = { webServer: { register(spec) { regSpecs.push(spec); return () => {}; } } };
 const routeDisposers = hostRoutes.registerRoutes(wsCtx, { store: routeStore });
-eq('registerRoutes 注册 19 条路由', regSpecs.length, 19);
-eq('registerRoutes 返回 19 个 disposer', routeDisposers.length, 19);
+eq('registerRoutes 注册 21 条路由', regSpecs.length, 21);
+eq('registerRoutes 返回 21 个 disposer', routeDisposers.length, 21);
 ok('registerRoutes 缺 connection 也不抛', true);
 
 // ═══════════════════ 13. client 半：根目录配置 / 风险确认 / 引导态 ═══════════════════
@@ -1048,7 +1106,7 @@ const saveButton = findIn(settingsTreeHostLoading, 'data-jk-kb-save', 'true');
 ok('设置页有保存按钮', !!saveButton);
 eq('host 未就绪时保存禁用', saveButton.props.disabled, true);
 eq('页脚容器类名', flatten(settingsTreeHostLoading).find((el) => el.props && el.props.className === 'jk-kb-footer').props.className, 'jk-kb-footer');
-eq('页脚仍有版本号', textOf(findIn(settingsTreeHostLoading, 'data-jk-kb-version', I.PLUGIN_VERSION)), 'JK知识库 v1.0.0');
+eq('页脚仍有版本号', textOf(findIn(settingsTreeHostLoading, 'data-jk-kb-version', I.PLUGIN_VERSION)), 'JK知识库 v' + I.PLUGIN_VERSION);
 
 // 主页面右栏分发：loading / host 不可用 / 未配置根目录 / 已配置。
 ok('右栏配置读取中 → loading', !!findIn(I.PanelContent({ rootStatus: 'loading', activeMenu: I.MENUS[0] }), 'data-jk-kb-root-loading', 'true'));
@@ -1620,7 +1678,7 @@ const strictCtx = makeStrictCtx(['webServer', 'connection'], {
 let strictThrew = null;
 try { hostIndex.apply(strictCtx, {}); } catch (err) { strictThrew = err; }
 eq('严格门禁 ctx 上 apply 不抛', strictThrew, null);
-eq('严格门禁下注册 19 条路由', strictRoutes.length, 19);
+eq('严格门禁下注册 21 条路由', strictRoutes.length, 21);
 eq('严格门禁下注册 19 个工具', strictTools.length, 19);
 deepEq('严格门禁下工具名完整', strictTools.map((d) => d.name), ['jk_kb_bootstrap', 'jk_kb_verify', 'jk_kb_reindex', 'jk_kb_inspect', 'jk_kb_step', 'jk_kb_curate', 'jk_kb_maintain', 'jk_kb_doctor', 'jk_kb_archive', 'jk_kb_expert_create', 'jk_kb_expert_update', 'jk_kb_expert_restore', 'jk_kb_expert_list', 'jk_kb_expert_archive', 'jk_kb_skill_create', 'jk_kb_skill_find', 'jk_kb_skill_run', 'jk_kb_skill_list', 'jk_kb_run_finish']);
 
