@@ -2238,69 +2238,38 @@ eq('10-06 调用数', day6.runCount, 1);
 eq('按日期归组', Object.keys(callGrid.groups).sort().join(','), '2026-10-05,2026-10-06');
 
 const skillViewProps = {
-  registry: { phase: 'ready', skills: registryNorm.skills, error: null },
-  calls: { phase: 'ready', calls: callsNorm.calls, nextBefore: null, error: null },
-  year: 2026, month: 10, today: '2026-10-05', selectedDate: '',
-  onPrev: () => {}, onNext: () => {}, onSelectDay: () => {}, onRefresh: () => {}, onRetry: () => {}, onCopyPath: () => {},
+  skills: { phase: 'ready', groups: I.presentSkills({ ok: true, skills: [
+    { id: 'sk-interview', name: '客户访谈', profession: '洞察', purpose: '把客户访谈内容整理成结构化要点' },
+    { id: 'sk-summary', name: '会议纪要', profession: '洞察', purpose: '把会议录音转成纪要' },
+    { id: 'sk-spec', name: '需求整理', profession: '交付', purpose: '把零散需求整理成规格' },
+    { id: 'sk-raw', name: '原始整理', profession: '交付', purpose: '' },
+  ] }).groups, count: 4, error: null },
+  onRetry: () => {},
 };
 const skillView = I.SkillViewView(skillViewProps);
 ok('技能视图容器', !!findIn(skillView, 'data-jk-kb-skill-view', 'true'));
-ok('注册表列表', !!findIn(skillView, 'data-jk-kb-skill', 'SK001'));
-contains('注册表名称', textOf(findIn(skillView, 'data-jk-kb-skill', 'SK001')), '客户访谈');
-contains('注册表版本', textOf(findIn(skillView, 'data-jk-kb-skill', 'SK001')), '1.0.0');
-contains('注册表关键词', textOf(findIn(skillView, 'data-jk-kb-skill', 'SK001')), '客户、访谈');
-const callEntry = findIn(skillView, 'data-jk-kb-skill-call-entry', 'SK001');
-eq('回执入口文案', textOf(callEntry), '记录一次调用');
-eq('回执入口可用', callEntry.props.disabled, undefined);
-eq('回执入口绑定点击', typeof callEntry.props.onClick, 'function');
-ok('调用网格存在', !!findIn(skillView, 'data-jk-kb-skill-calls-grid', 'month'));
-eq('日期格调用数', findIn(skillView, 'data-jk-kb-skill-call-day', '2026-10-05').props['data-jk-kb-skill-call-count'], '2');
-eq('日期格失败标记', findIn(skillView, 'data-jk-kb-skill-call-day', '2026-10-05').props['data-jk-kb-skill-call-failed'], 'true');
-eq('今天标记', findIn(skillView, 'data-jk-kb-skill-call-day', '2026-10-05').props['data-jk-kb-skill-call-today'], 'true');
+ok('按岗位分组渲染', !!findIn(skillView, 'data-jk-kb-skill-desc-group', '洞察'));
+eq('技能总数提示', textOf(findIn(skillView, 'data-jk-kb-skill-count', 'true')), '共 4 项技能，一行一个');
+eq('一行一个技能', flatten(skillView).filter((el) => el.props && el.props['data-jk-kb-skill-desc'] !== undefined).length, 4);
+contains('技能名称', textOf(findIn(skillView, 'data-jk-kb-skill-desc', 'sk-interview')), '客户访谈');
+contains('技能说明', textOf(findIn(skillView, 'data-jk-kb-skill-desc', 'sk-interview')), '结构化要点');
+contains('无说明显示占位', textOf(findIn(skillView, 'data-jk-kb-skill-desc', 'sk-raw')), '—');
 
-let pickedCallDate = '';
-const skillViewPick = I.SkillViewView(Object.assign({}, skillViewProps, {
-  onSelectDay: (date) => { pickedCallDate = date; },
-}));
-findIn(skillViewPick, 'data-jk-kb-skill-call-day', '2026-10-05').props.onClick();
-eq('点日期回传', pickedCallDate, '2026-10-05');
-const skillDayView = I.SkillViewView(Object.assign({}, skillViewProps, { selectedDate: '2026-10-05' }));
-const callRows = flatten(skillDayView).filter((el) => el.props && el.props['data-jk-kb-skill-call'] !== undefined);
-eq('当天调用条数', callRows.length, 2);
-contains('调用时间', textOf(findIn(skillDayView, 'data-jk-kb-skill-call', callsNorm.calls[0].key)), '-');
-contains('调用技能与版本', textOf(findIn(skillDayView, 'data-jk-kb-skill-call', callsNorm.calls[0].key)), '客户访谈 1.0.0');
-contains('调用任务', textOf(findIn(skillDayView, 'data-jk-kb-skill-call', callsNorm.calls[0].key)), '整理访谈A');
-contains('调用结果', textOf(findIn(skillDayView, 'data-jk-kb-skill-call', callsNorm.calls[0].key)), '成功');
-contains('失败原因', textOf(findIn(skillDayView, 'data-jk-kb-skill-call-reason', callsNorm.calls[1].key)), '缺字段');
-contains('产物路径', textOf(findIn(skillDayView, 'data-jk-kb-skill-call-outputs', callsNorm.calls[0].key)), '/kb/03_内容');
-contains('无产物显示 —', textOf(findIn(skillDayView, 'data-jk-kb-skill-call-outputs', callsNorm.calls[1].key)), '—');
-
-const emptyRegistryView = I.SkillViewView(Object.assign({}, skillViewProps, {
-  registry: { phase: 'ready', skills: [], error: null },
-}));
-contains('注册表空态', textOf(findIn(emptyRegistryView, 'data-jk-kb-skill-registry-empty', 'true')), '还没有自定义 SKILL，点上方『新建技能』');
-const emptyCallsView = I.SkillViewView(Object.assign({}, skillViewProps, {
-  calls: { phase: 'ready', calls: [], nextBefore: null, error: null },
-}));
-contains('调用空月提示', textOf(findIn(emptyCallsView, 'data-jk-kb-skill-calls-empty', 'true')), '本月暂无调用');
-const emptySkillDayView = I.SkillViewView(Object.assign({}, skillViewProps, { selectedDate: '2026-10-09' }));
-contains('当天无调用提示', textOf(findIn(emptySkillDayView, 'data-jk-kb-skill-calls-day-empty', 'true')), '当天暂无调用');
-
+const skillLoadingView = I.SkillViewView({ skills: { phase: 'loading', groups: [], count: 0, error: null } });
+ok('读取中提示', !!findIn(skillLoadingView, 'data-jk-kb-skill-registry-loading', 'true'));
+eq('读取中不渲染技能行', flatten(skillLoadingView).filter((el) => el.props && el.props['data-jk-kb-skill-desc'] !== undefined).length, 0);
+const skillEmptyView = I.SkillViewView({ skills: { phase: 'ready', groups: [], count: 0, error: null } });
+contains('空目录提示', textOf(findIn(skillEmptyView, 'data-jk-kb-skill-registry-empty', 'true')), '暂无技能');
 let skillRetried = 0;
-const registryErrorView = I.SkillViewView(Object.assign({}, skillViewProps, {
-  registry: { phase: 'error', skills: [], error: { code: 'host-unreachable' } },
+const skillErrorView = I.SkillViewView({
+  skills: { phase: 'error', groups: [], count: 0, error: { code: 'host-unreachable', message: '宿主服务未连接' } },
   onRetry: () => { skillRetried += 1; },
-}));
-contains('注册表不可用', textOf(registryErrorView), '技能库不可用');
-findIn(registryErrorView, 'data-jk-kb-skill-registry-retry', 'true').props.onClick();
-eq('注册表重试回调', skillRetried, 1);
-const callsErrorView = I.SkillViewView(Object.assign({}, skillViewProps, {
-  calls: { phase: 'error', calls: [], nextBefore: null, error: { code: 'host-unreachable' } },
-  onRetry: () => { skillRetried += 1; },
-}));
-contains('调用日志不可用', textOf(callsErrorView), '技能库不可用');
-findIn(callsErrorView, 'data-jk-kb-skill-calls-retry', 'true').props.onClick();
-eq('调用日志重试回调', skillRetried, 2);
+});
+contains('技能目录不可用', textOf(skillErrorView), '技能库不可用');
+contains('技能目录错误详情', textOf(skillErrorView), '详情：host-unreachable 宿主服务未连接');
+findIn(skillErrorView, 'data-jk-kb-skill-registry-retry', 'true').props.onClick();
+eq('技能目录重试回调', skillRetried, 1);
+eq('错误态不渲染技能行', flatten(skillErrorView).filter((el) => el.props && el.props['data-jk-kb-skill-desc'] !== undefined).length, 0);
 
 // 接口路径与失败归一
 const registryFetch = installFetch(() => ({ body: { ok: true, skills: [] } }));
@@ -2392,64 +2361,6 @@ eq('回执成功提示已登记', callOkPlan.notice.text, '已登记');
 const callFailPlan = I.planSkillCallResult({ submitted: false, message: '技能不存在，请重新选择' });
 eq('回执失败不收起', callFailPlan.closeForm, false);
 eq('回执失败提示原文', callFailPlan.notice.text, '技能不存在，请重新选择');
-
-// 回执表单渲染
-let callOpenedWith = null;
-const callViewProps = Object.assign({}, skillViewProps, {
-  callFormOpen: true,
-  callForm: { skillId: '', task: '', result: 'ok', reason: '', outputs: '' },
-  callBusy: false,
-  callNotice: null,
-  onCallOpen: (id) => { callOpenedWith = id; },
-});
-const callFormView = I.SkillViewView(callViewProps);
-ok('回执表单容器', !!findIn(callFormView, 'data-jk-kb-skill-call-form', 'true'));
-ok('技能下拉', !!findIn(callFormView, 'data-jk-kb-call-skill', 'true'));
-ok('任务描述输入', !!findIn(callFormView, 'data-jk-kb-call-task', 'true'));
-const resultSelect = findIn(callFormView, 'data-jk-kb-call-result', 'true');
-eq('结果下拉', resultSelect.props.value, 'ok');
-ok('失败原因输入', !!findIn(callFormView, 'data-jk-kb-call-reason', 'true'));
-ok('产物路径多行', !!findIn(callFormView, 'data-jk-kb-call-outputs', 'true'));
-eq('空表单禁用提交', findIn(callFormView, 'data-jk-kb-call-submit', 'true').props.disabled, true);
-contains('回执必填提示', textOf(findIn(callFormView, 'data-jk-kb-call-required', 'true')), '技能、任务描述');
-const callFilledView = I.SkillViewView(Object.assign({}, callViewProps, {
-  callForm: { skillId: 'SK001', task: '做事', result: 'ok', reason: '', outputs: '' },
-}));
-eq('填写后可提交', findIn(callFilledView, 'data-jk-kb-call-submit', 'true').props.disabled, false);
-const callFailView = I.SkillViewView(Object.assign({}, callViewProps, {
-  callForm: { skillId: 'SK001', task: '做事', result: 'fail', reason: '短', outputs: '' },
-}));
-eq('fail 原因不足禁用提交', findIn(callFailView, 'data-jk-kb-call-submit', 'true').props.disabled, true);
-contains('fail 原因为必填提示', textOf(findIn(callFailView, 'data-jk-kb-call-required', 'true')), '失败原因');
-const callNoticeView = I.SkillViewView(Object.assign({}, callViewProps, {
-  callNotice: { kind: 'error', text: '产物路径不合法：只能放在 03..12 顶层目录内' },
-}));
-contains('回执错误通知', textOf(findIn(callNoticeView, 'data-jk-kb-skill-call-notice', 'error')), '产物路径不合法');
-const emptyRegistryCallView = I.SkillViewView(Object.assign({}, skillViewProps, {
-  registry: { phase: 'ready', skills: [], error: null },
-  callFormOpen: true,
-  callForm: { skillId: '', task: '', result: 'ok', reason: '', outputs: '' },
-}));
-contains('空注册表提示', textOf(findIn(emptyRegistryCallView, 'data-jk-kb-call-no-skills', 'true')), '还没有自定义 SKILL，请先新建');
-eq('空注册表禁用提交', findIn(emptyRegistryCallView, 'data-jk-kb-call-submit', 'true').props.disabled, true);
-eq('空注册表不渲染技能下拉', findIn(emptyRegistryCallView, 'data-jk-kb-call-skill', 'true'), undefined);
-
-// 每条 SKILL 入口 + 顶部入口
-const callEntryView = I.SkillViewView(Object.assign({}, skillViewProps, { onCallOpen: (id) => { callOpenedWith = id; } }));
-findIn(callEntryView, 'data-jk-kb-skill-call-entry', 'SK002').props.onClick();
-eq('每条 SKILL 入口回传 id', callOpenedWith, 'SK002');
-findIn(callEntryView, 'data-jk-kb-skill-call-new', 'true').props.onClick();
-eq('顶部入口回传空 id', callOpenedWith, '');
-let callFieldEdits = [];
-const callEditView = I.SkillViewView(Object.assign({}, callViewProps, {
-  onCallField: (field, value) => callFieldEdits.push(field + '=' + value),
-}));
-findIn(callEditView, 'data-jk-kb-call-skill', 'true').props.onChange({ target: { value: 'SK001' } });
-findIn(callEditView, 'data-jk-kb-call-task', 'true').props.onChange({ target: { value: '做事' } });
-findIn(callEditView, 'data-jk-kb-call-result', 'true').props.onChange({ target: { value: 'fail' } });
-findIn(callEditView, 'data-jk-kb-call-reason', 'true').props.onChange({ target: { value: '原因' } });
-findIn(callEditView, 'data-jk-kb-call-outputs', 'true').props.onChange({ target: { value: '/kb/03_内容/a.md' } });
-eq('回执五字段回调', callFieldEdits.join(','), 'skillId=SK001,task=做事,result=fail,reason=原因,outputs=/kb/03_内容/a.md');
 
 // M06/M07 只读提议
 const proposalReportTree = I.ReportsView({
@@ -3031,13 +2942,14 @@ contains('专家空态文案', textOf(findIn(emptyExpertsView, 'data-jk-kb-exper
 let expertsRetried = 0;
 const expertsErrorView = I.ExpertsView(Object.assign({}, {
   status: 'active',
-  experts: { phase: 'error', list: [], error: { code: 'host-unreachable' } },
+  experts: { phase: 'error', list: [], error: { code: 'host-unreachable', message: '宿主服务未连接' } },
   skills: { phase: 'ready', groups: [] },
   form: { open: false, mode: 'create', id: '', fields: I.expertToForm(null), search: '', notice: null },
   archive: { target: null, confirmed: false, busy: false, notice: null },
   onRetry: () => { expertsRetried += 1; },
 }));
 contains('专家列表不可用', textOf(expertsErrorView), '专家列表不可用');
+contains('专家错误详情', textOf(expertsErrorView), '详情：host-unreachable 宿主服务未连接');
 findIn(expertsErrorView, 'data-jk-kb-experts-retry', 'true').props.onClick();
 eq('专家重试回调', expertsRetried, 1);
 
@@ -3682,6 +3594,37 @@ eq('菜单点击回调', navSelects.join(','), 'tasks');
 ok('侧栏菜单纵向排布', flatten(readyNav).some((el) => el.type === 'ul' && String(el.props.className).indexOf('jk-kb-sidebar-menu') >= 0));
 const fallbackNav = I.MenusNav({ rootStatus: 'no-root', activeId: 'tasks' });
 eq('选中项不可见时回落到仪表盘', findIn(fallbackNav, 'data-jk-kb-menu', 'dashboard').props['aria-current'], 'page');
+
+// ── 侧边栏折叠 / 展开（icon 模式）：collapsed 只渲染图标列，label 转 title/aria-label ──
+const collapsedNav = I.MenusNav({ rootStatus: 'ready', activeId: 'dashboard', collapsed: true, onSelect: () => {} });
+const collapsedButtons = flatten(collapsedNav).filter((el) => el.props && el.props['data-jk-kb-menu'] !== undefined);
+eq('折叠态菜单条数不变', collapsedButtons.length, 5);
+eq('折叠态不渲染文字', collapsedButtons.map(textOf).join(''), '');
+ok('折叠态保留 title 提示', collapsedButtons.every((btn) => typeof btn.props.title === 'string' && btn.props.title.length > 0));
+ok('折叠态保留 aria-label', collapsedButtons.every((btn) => typeof btn.props['aria-label'] === 'string' && btn.props['aria-label'].length > 0));
+eq('折叠态图标仍在', flatten(collapsedNav).filter((el) => el.props && el.props['data-jk-kb-menu-icon'] === 'true').length, 5);
+eq('菜单组折叠标记', findIn(collapsedNav, 'data-jk-kb-menu-group', 'true').props['data-collapsed'], 'true');
+eq('展开态折叠标记为 false', findIn(readyNav, 'data-jk-kb-menu-group', 'true').props['data-collapsed'], 'false');
+// PanelLeft 切换图标（shadcn SidebarTrigger 同款）
+const toggleIcon = I.PanelLeftIcon({ width: 16, height: 16 });
+ok('切换按钮图标是 svg', toggleIcon.type === 'svg');
+ok('切换按钮图标线稿', toggleIcon.props.fill === 'none' && toggleIcon.props.stroke === 'currentColor');
+// reducer：toggleSidebar 只翻折叠位，不影响选中与任务展开态
+const baseState = I.createPanelState();
+eq('初始态侧边栏展开', baseState.sidebarCollapsed, false);
+const collapsedOnce = I.reducePanel(baseState, { type: 'toggleSidebar' });
+eq('toggleSidebar 折叠', collapsedOnce.sidebarCollapsed, true);
+eq('折叠不改选中', collapsedOnce.selected, baseState.selected);
+eq('折叠不改任务展开', collapsedOnce.expanded, false);
+const expandedTasks = I.reducePanel(collapsedOnce, { type: 'toggleTasks' });
+eq('折叠下任务区仍可展开', expandedTasks.expanded, true);
+eq('展开任务不翻折叠位', expandedTasks.sidebarCollapsed, true);
+const collapsedTwice = I.reducePanel(expandedTasks, { type: 'toggleSidebar' });
+eq('再 toggle 恢复展开', collapsedTwice.sidebarCollapsed, false);
+eq('恢复展开保留任务态', collapsedTwice.expanded, true);
+const selectedWhileCollapsed = I.reducePanel(collapsedOnce, { type: 'select', id: 'tasks' });
+eq('折叠下切菜单保留折叠', selectedWhileCollapsed.sidebarCollapsed, true);
+eq('折叠下切菜单复位任务展开', selectedWhileCollapsed.expanded, false);
 
 // ── shadcn/ui Sidebar 结构：品牌头 / 菜单 icon / 分组标题 / footer 时钟 ──
 const readyMenuButtons = flatten(readyNav).filter((el) => el.props && el.props['data-jk-kb-menu'] !== undefined);

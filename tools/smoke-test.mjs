@@ -262,14 +262,18 @@ eq('恰好 3 条时 rendered 3 条', noMore.items.length, 3);
 eq('恰好 3 条时 hasMore=false（无按钮）', noMore.hasMore, false);
 eq('非数组展开态安全', I.buildTasksView(null, 3, true).items.length, 0);
 
-// 4c. 主页面 UI 状态机：切菜单必须复位展开态
-deepEq('初始面板状态', I.createPanelState(), { selected: 'dashboard', expanded: false });
-deepEq('toggleTasks 展开', I.reducePanel(I.createPanelState(), { type: 'toggleTasks' }), { selected: 'dashboard', expanded: true });
-deepEq('再次 toggleTasks 收起', I.reducePanel({ selected: 'dashboard', expanded: true }, { type: 'toggleTasks' }), { selected: 'dashboard', expanded: false });
-deepEq('select 已知菜单并复位展开态', I.reducePanel({ selected: 'dashboard', expanded: true }, { type: 'select', id: 'dashboard' }), { selected: 'dashboard', expanded: false });
-deepEq('select 未知菜单被忽略', I.reducePanel({ selected: 'dashboard', expanded: true }, { type: 'select', id: 'nope' }), { selected: 'dashboard', expanded: true });
-deepEq('脏状态回落首项且未展开', I.reducePanel({ selected: 'nope', expanded: true }, {}), { selected: 'dashboard', expanded: false });
-deepEq('未知 action 不改状态', I.reducePanel({ selected: 'dashboard', expanded: true }, null), { selected: 'dashboard', expanded: true });
+// 4c. 主页面 UI 状态机：切菜单必须复位展开态；侧边栏折叠位独立翻转
+deepEq('初始面板状态', I.createPanelState(), { selected: 'dashboard', expanded: false, sidebarCollapsed: false });
+deepEq('toggleTasks 展开', I.reducePanel(I.createPanelState(), { type: 'toggleTasks' }), { selected: 'dashboard', expanded: true, sidebarCollapsed: false });
+deepEq('再次 toggleTasks 收起', I.reducePanel({ selected: 'dashboard', expanded: true }, { type: 'toggleTasks' }), { selected: 'dashboard', expanded: false, sidebarCollapsed: false });
+deepEq('select 已知菜单并复位展开态', I.reducePanel({ selected: 'dashboard', expanded: true }, { type: 'select', id: 'dashboard' }), { selected: 'dashboard', expanded: false, sidebarCollapsed: false });
+deepEq('select 未知菜单被忽略', I.reducePanel({ selected: 'dashboard', expanded: true }, { type: 'select', id: 'nope' }), { selected: 'dashboard', expanded: true, sidebarCollapsed: false });
+deepEq('toggleSidebar 折叠', I.reducePanel(I.createPanelState(), { type: 'toggleSidebar' }), { selected: 'dashboard', expanded: false, sidebarCollapsed: true });
+deepEq('再 toggleSidebar 展开', I.reducePanel({ selected: 'dashboard', expanded: false, sidebarCollapsed: true }, { type: 'toggleSidebar' }), { selected: 'dashboard', expanded: false, sidebarCollapsed: false });
+deepEq('折叠下 toggleTasks 不翻折叠位', I.reducePanel({ selected: 'dashboard', expanded: false, sidebarCollapsed: true }, { type: 'toggleTasks' }), { selected: 'dashboard', expanded: true, sidebarCollapsed: true });
+deepEq('折叠下切菜单保留折叠', I.reducePanel({ selected: 'dashboard', expanded: true, sidebarCollapsed: true }, { type: 'select', id: 'tasks' }), { selected: 'tasks', expanded: false, sidebarCollapsed: true });
+deepEq('脏状态回落首项且未展开', I.reducePanel({ selected: 'nope', expanded: true }, {}), { selected: 'dashboard', expanded: false, sidebarCollapsed: false });
+deepEq('未知 action 不改状态', I.reducePanel({ selected: 'dashboard', expanded: true }, null), { selected: 'dashboard', expanded: true, sidebarCollapsed: false });
 ok('源码不再保留 moreHint 提示段', source.indexOf('moreHint') < 0);
 
 // ─────────────────── 5. 菜单数组 —— 数据驱动 ───────────────────

@@ -423,6 +423,11 @@ window.__ModuleLoader__.load({
       'M17 20V8',
       'M22 4v16',
     ]);
+    // 面板图标（lucide PanelLeft）：侧边栏折叠 / 展开的切换按钮，shadcn SidebarTrigger 同款。
+    const PanelLeftIcon = makeNavIcon([
+      'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+      'M9 3v18',
+    ]);
 
     // 未配置根目录时只保留仪表盘；其它状态（loading/error/ready）保持完整菜单。
     function visibleMenus(rootStatus) {
@@ -482,9 +487,9 @@ window.__ModuleLoader__.load({
       };
     }
 
-    // 主页面 UI 状态：选中菜单 + 任务区是否展开。切换菜单一律收起任务区。
+    // 主页面 UI 状态：选中菜单 + 任务区是否展开 + 侧边栏是否折叠。切换菜单一律收起任务区。
     function createPanelState() {
-      return { selected: (MENUS[0] && MENUS[0].id) || DASHBOARD_ID, expanded: false };
+      return { selected: (MENUS[0] && MENUS[0].id) || DASHBOARD_ID, expanded: false, sidebarCollapsed: false };
     }
 
     function reducePanel(state, action) {
@@ -493,13 +498,16 @@ window.__ModuleLoader__.load({
       // 选中项不认识（脏状态 / 菜单被删）就整体回落到初始态。
       const match = MENUS.filter((menu) => menu.id === base.selected)[0];
       if (!match) return fallback;
+      const collapsed = base.sidebarCollapsed === true;
       const act = action || {};
       if (act.type === 'select' && MENUS.filter((menu) => menu.id === act.id)[0]) {
-        // 切菜单时复位展开态：切走再回来不该还是展开的。
-        return { selected: act.id, expanded: false };
+        // 切菜单时复位展开态：切走再回来不该还是展开的；折叠态保留。
+        return { selected: act.id, expanded: false, sidebarCollapsed: collapsed };
       }
-      if (act.type === 'toggleTasks') return { selected: match.id, expanded: base.expanded !== true };
-      return { selected: match.id, expanded: base.expanded === true };
+      if (act.type === 'toggleTasks') return { selected: match.id, expanded: base.expanded !== true, sidebarCollapsed: collapsed };
+      // 侧边栏折叠 / 展开：只翻折叠位，不影响任务区展开态。
+      if (act.type === 'toggleSidebar') return { selected: match.id, expanded: base.expanded === true, sidebarCollapsed: !collapsed };
+      return { selected: match.id, expanded: base.expanded === true, sidebarCollapsed: collapsed };
     }
 
     // ───────────────────────────── 宿主服务（HTTP）─────────────────────────────
@@ -3400,7 +3408,7 @@ window.__ModuleLoader__.load({
       // ── shadcn/ui Sidebar 视觉（等宽列 + 边框分隔 + 分组滚动区 + 底部时钟） ──
       '.jk-kb-sidebar{flex:0 0 232px;min-width:200px;min-height:0;display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:12px;padding:10px 8px;}',
       '.jk-kb-sidebar-header{display:flex;align-items:center;padding:2px 6px 10px;border-bottom:1px solid var(--dsw-alias-border-l1);}',
-      '.jk-kb-sidebar-brand{display:flex;align-items:center;gap:8px;min-width:0;}',
+      '.jk-kb-sidebar-brand{flex:1 1 auto;display:flex;align-items:center;gap:8px;min-width:0;}',
       '.jk-kb-sidebar-brand-logo{flex:none;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:var(--dsw-alias-brand-primary);color:var(--primary-foreground,var(--dsw-alias-label-on-brand,var(--dsw-alias-label-primary)));}',
       '.jk-kb-sidebar-brand-name{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.jk-kb-sidebar-content{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:10px 2px 2px;}',
@@ -3416,6 +3424,17 @@ window.__ModuleLoader__.load({
       '.jk-kb-sidebar-menu-button[data-active="true"]{background:var(--dsw-alias-button-info-fill);color:var(--primary-foreground);font-weight:600;}',
       '.jk-kb-nav-menu-icon{flex:none;}',
       '.jk-kb-sidebar-menu-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      // ── Sidebar 折叠 / 展开（icon 模式）：窄列只留品牌图标 + 菜单图标，宽度过渡平滑 ──
+      '.jk-kb-sidebar{transition:flex-basis .2s ease,min-width .2s ease,padding .2s ease;}',
+      '.jk-kb-sidebar-toggle{flex:none;color:var(--dsw-alias-label-tertiary);}',
+      '.jk-kb-sidebar-toggle:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      '.jk-kb-sidebar[data-collapsed="true"]{flex-basis:56px;min-width:56px;padding:10px 6px;}',
+      '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-header{flex-direction:column;gap:8px;padding:2px 0 10px;}',
+      '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-brand{flex:0 0 auto;justify-content:center;}',
+      '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-brand-name{display:none;}',
+      '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-content{padding:10px 0 2px;}',
+      '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-group{padding:0;}',
+      '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-menu-button{justify-content:center;gap:0;padding:8px 0;}',
       '.jk-kb-sidebar-task-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}',
       '.jk-kb-section-title{margin:0;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary);}',
       '.jk-kb-task-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}',
@@ -3650,22 +3669,17 @@ window.__ModuleLoader__.load({
       '.jk-kb-report-title{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);}',
       '.jk-kb-report-proposed{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-brand-primary);word-break:break-all;}',
       '.jk-kb-skill-view{display:flex;flex-direction:column;gap:12px;}',
-      '.jk-kb-skill-registry,.jk-kb-skill-calls{display:flex;flex-direction:column;gap:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;}',
-      '.jk-kb-skill-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}',
-      '.jk-kb-skill-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);padding:8px 10px;font-size:12px;}',
-      '.jk-kb-skill-id{font-weight:600;color:var(--dsw-alias-brand-primary);}',
-      '.jk-kb-skill-name{font-weight:600;color:var(--dsw-alias-label-primary);}',
-      '.jk-kb-skill-meta{font-size:11px;color:var(--dsw-alias-label-tertiary);}',
-      '.jk-kb-skill-status{font-size:11px;color:var(--dsw-alias-label-secondary);}',
-      '.jk-kb-skill-keywords{flex:1 1 160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
+      '.jk-kb-skill-registry{display:flex;flex-direction:column;gap:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;}',
       '.jk-kb-skill-matches{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:2px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);}',
       '.jk-kb-skill-match{}',
-      '.jk-kb-skill-call{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);padding:6px 10px;font-size:12px;}',
-      '.jk-kb-skill-call-time{font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;}',
-      '.jk-kb-skill-call-name{font-weight:600;color:var(--dsw-alias-label-primary);white-space:nowrap;}',
-      '.jk-kb-skill-call-task{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);}',
-      '.jk-kb-skill-call-reason{font-size:11px;color:var(--dsw-alias-state-error-primary);}',
-      '.jk-kb-skill-call-outputs{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
+      // 技能说明视图：按岗位分组，组内一行一个技能（名称 + 说明）
+      '.jk-kb-skill-desc-group{display:flex;flex-direction:column;gap:4px;}',
+      '.jk-kb-skill-desc-group-title{margin:8px 0 0;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);}',
+      '.jk-kb-skill-desc-list{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px;}',
+      '.jk-kb-skill-desc-item{display:flex;align-items:baseline;gap:12px;padding:7px 10px;border-radius:8px;font-size:12px;line-height:1.6;}',
+      '.jk-kb-skill-desc-item:hover{background:var(--dsw-alias-interactive-bg-hover);}',
+      '.jk-kb-skill-desc-name{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--dsw-alias-label-primary);}',
+      '.jk-kb-skill-desc-purpose{flex:1;min-width:0;color:var(--dsw-alias-label-secondary);}',
       '.jk-kb-experts{display:flex;flex-direction:column;gap:12px;}',
       '.jk-kb-experts-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;}',
       '.jk-kb-experts-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}',
@@ -5783,25 +5797,35 @@ window.__ModuleLoader__.load({
     }
 
     // 左栏菜单：shadcn SidebarMenu 形态（icon + label），数据驱动、顺序即展示顺序。
+    // collapsed=true（icon 折叠模式）：只渲染图标列，label 转为 title/aria-label 提示。
     function MenusNav(props) {
       const p = props || {};
+      const collapsed = p.collapsed === true;
       const menus = visibleMenus(p.rootStatus);
       const activeId = typeof p.activeId === 'string' && menus.some((menu) => menu.id === p.activeId)
         ? p.activeId
         : (menus[0] && menus[0].id);
-      return SidebarGroup({ 'aria-label': '知识库菜单', 'data-jk-kb-menu-group': 'true' },
+      return SidebarGroup({
+        'aria-label': '知识库菜单',
+        'data-jk-kb-menu-group': 'true',
+        'data-collapsed': collapsed ? 'true' : 'false',
+      },
         h('ul', { className: 'jk-kb-sidebar-menu', role: 'list' },
           menus.map((menu) => h('li', { key: menu.id, className: 'jk-kb-sidebar-menu-item' },
             SidebarMenuButton({
               active: menu.id === activeId,
               'data-jk-kb-menu': menu.id,
               'aria-current': menu.id === activeId ? 'page' : 'false',
+              title: menu.label,
+              'aria-label': menu.label,
               onClick: () => { if (typeof p.onSelect === 'function') p.onSelect(menu.id); },
             },
               menu.icon
                 ? menu.icon({ width: 16, height: 16 })
                 : null,
-              h('span', { className: 'jk-kb-sidebar-menu-text' }, menu.label)
+              collapsed
+                ? null
+                : h('span', { className: 'jk-kb-sidebar-menu-text' }, menu.label)
             )))
         )
       );
@@ -7351,6 +7375,9 @@ window.__ModuleLoader__.load({
         ? h('div', { className: 'jk-kb-error', 'data-jk-kb-experts-error': 'true' },
             h('h3', { className: 'jk-kb-placeholder-title' }, '专家列表不可用'),
             h('p', { className: 'jk-kb-hint' }, '无法读取专家列表（' + HOST_EXPERTS_PATH + '）。'),
+            experts.error
+              ? h('p', { className: 'jk-kb-note' }, '详情：' + (experts.error.code || 'unknown') + ' ' + (experts.error.message || ''))
+              : null,
             Button({
               variant: 'outline',
               'data-jk-kb-experts-retry': 'true',
@@ -8445,355 +8472,81 @@ window.__ModuleLoader__.load({
           }, entry[1]))));
     }
 
-    // ───────────────────────────── 技能视图（注册表 + 调用日志） ─────────────────────────────
+    // ───────────────────────────── 技能视图（所有技能说明，一行一个） ─────────────────────────────
     function SkillViewPage() {
-      const now = new Date();
-      const aliveRef = React.useRef ? React.useRef(true) : { current: true };
-      const [registry, setRegistry] = React.useState({ phase: 'loading', skills: [], error: null });
-      const [calls, setCalls] = React.useState({ phase: 'loading', calls: [], nextBefore: null, error: null });
-      const [cursor, setCursor] = React.useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
-      const [selectedDate, setSelectedDate] = React.useState('');
+      const [state, setState] = React.useState({ phase: 'loading', groups: [], count: 0, error: null });
       const [reload, setReload] = React.useState(0);
-      const [callFormOpen, setCallFormOpen] = React.useState(false);
-      const [callForm, setCallForm] = React.useState({ skillId: '', task: '', result: 'ok', reason: '', outputs: '' });
-      const [callBusy, setCallBusy] = React.useState(false);
-      const [callNotice, setCallNotice] = React.useState(null);
 
       React.useEffect(function () {
         let alive = true;
-        setRegistry((prev) => Object.assign({}, prev, { phase: 'loading' }));
-        setCalls((prev) => Object.assign({}, prev, { phase: 'loading' }));
-        fetchSkillRegistry({ limit: 50 }).then((result) => {
+        setState((prev) => Object.assign({}, prev, { phase: 'loading' }));
+        fetchSkills().then((result) => {
           if (!alive) return;
-          const norm = normalizeRegistryResponse(result);
-          setRegistry(norm.ok === true
-            ? { phase: 'ready', skills: norm.skills, error: null }
-            : { phase: 'error', skills: [], error: norm.error });
+          const norm = normalizeSkillsResponse(result);
+          setState(norm.ok === true
+            ? { phase: 'ready', groups: norm.groups, count: norm.count, error: null }
+            : { phase: 'error', groups: [], count: 0, error: norm.error });
         });
-        fetchSkillCalls({ limit: 100 }).then((result) => {
-          if (!alive) return;
-          const norm = normalizeCallsResponse(result);
-          setCalls(norm.ok === true
-            ? { phase: 'ready', calls: norm.calls, nextBefore: norm.nextBefore, error: null }
-            : { phase: 'error', calls: [], nextBefore: null, error: norm.error });
-        });
-        return function () { alive = false; aliveRef.current = false; };
+        return function () { alive = false; };
       }, [reload]);
 
-      function shiftMonth(delta) {
-        const total = cursor.year * 12 + (cursor.month - 1) + delta;
-        setCursor({ year: Math.floor(total / 12), month: ((total % 12) + 12) % 12 + 1 });
-        setSelectedDate('');
-      }
-
-      const registrySkills = registry.phase === 'ready' && Array.isArray(registry.skills) ? registry.skills : [];
-      const hasSkills = registrySkills.length > 0;
-
-      function openCallForm(skillId) {
-        setCallForm({ skillId: skillId || '', task: '', result: 'ok', reason: '', outputs: '' });
-        setCallNotice(null);
-        setCallFormOpen(true);
-      }
-
-      function setCallField(field, value) {
-        setCallForm((prev) => Object.assign({}, prev, { [field]: value }));
-      }
-
-      async function submitCall() {
-        const validation = validateSkillCallForm(callForm, hasSkills);
-        if (validation.ok !== true || callBusy) return;
-        setCallBusy(true);
-        setCallNotice(null);
-        const outcome = await startSkillCallRequest(callForm, { hasSkills: hasSkills });
-        if (!aliveRef.current) return;
-        setCallBusy(false);
-        const plan = planSkillCallResult(outcome);
-        setCallNotice(plan.notice);
-        if (plan.closeForm) {
-          setCallFormOpen(false);
-          setCallForm({ skillId: '', task: '', result: 'ok', reason: '', outputs: '' });
-        }
-        if (plan.refresh) setReload(reload + 1);
-      }
-
       return SkillViewView({
-        registry: registry,
-        calls: calls,
-        year: cursor.year,
-        month: cursor.month,
-        today: toLocalDateString(new Date()),
-        selectedDate: selectedDate,
-        onPrev: () => shiftMonth(-1),
-        onNext: () => shiftMonth(1),
-        onSelectDay: (date) => setSelectedDate(date),
-        onRefresh: () => setReload(reload + 1),
+        skills: state,
         onRetry: () => setReload(reload + 1),
-        onCopyPath: (path) => copyToClipboard(path),
-        callFormOpen: callFormOpen,
-        callForm: callForm,
-        callBusy: callBusy,
-        callNotice: callNotice,
-        onCallOpen: openCallForm,
-        onCallClose: () => { setCallFormOpen(false); setCallNotice(null); },
-        onCallField: setCallField,
-        onCallSubmit: submitCall,
       });
     }
 
     function SkillViewView(props) {
       const p = props || {};
-      const registry = p.registry && typeof p.registry === 'object' ? p.registry : { phase: 'loading', skills: [], error: null };
-      const calls = p.calls && typeof p.calls === 'object' ? p.calls : { phase: 'loading', calls: [], nextBefore: null, error: null };
-      const registrySkills = Array.isArray(registry.skills) ? registry.skills : [];
-      const callList = Array.isArray(calls.calls) ? calls.calls : [];
-      const grid = buildSkillCallMonthGrid(p.year, p.month, callList);
-      const dayCalls = p.selectedDate && grid.groups[p.selectedDate] ? grid.groups[p.selectedDate] : [];
-      const callForm = p.callForm && typeof p.callForm === 'object'
-        ? p.callForm
-        : { skillId: '', task: '', result: 'ok', reason: '', outputs: '' };
-      const callHasSkills = registrySkills.length > 0;
-      const callValidation = validateSkillCallForm(callForm, callHasSkills);
-      const callNotice = p.callNotice && p.callNotice.kind ? p.callNotice : null;
-      const callMissingLabels = {
-        skillId: '技能',
-        task: '任务描述',
-        taskTooLong: '任务描述（≤200 字符）',
-        reason: '失败原因（≥4 字符）',
-      };
-      const callFormBox = p.callFormOpen === true
-        ? h('section', { className: 'jk-kb-curate jk-kb-skill-call-form', 'data-jk-kb-skill-call-form': 'true' },
-            h('h3', { className: 'jk-kb-curate-title' }, '记录一次调用'),
-            callHasSkills
-              ? [
-                  h('label', { key: 'call-skill-label', className: 'jk-kb-field' }, '技能'),
-                  h('select', {
-                    key: 'call-skill',
-                    className: 'jk-kb-select',
-                    'data-jk-kb-call-skill': 'true',
-                    value: typeof callForm.skillId === 'string' ? callForm.skillId : '',
-                    onChange: (event) => {
-                      if (typeof p.onCallField === 'function') p.onCallField('skillId', event && event.target ? event.target.value : '');
-                    },
-                  },
-                    h('option', { value: '' }, '请选择技能'),
-                    registrySkills.map((skill) => h('option', { key: skill.id, value: skill.id }, skill.id + ' · ' + skill.name))
-                  ),
-                ]
-              : h('p', { className: 'jk-kb-hint', 'data-jk-kb-call-no-skills': 'true' }, '还没有自定义 SKILL，请先新建'),
-            h('label', { className: 'jk-kb-field' }, '任务描述（必填，≤200 字符）'),
-            h('input', {
-              type: 'text',
-              className: 'jk-kb-field-input',
-              'data-jk-kb-call-task': 'true',
-              value: typeof callForm.task === 'string' ? callForm.task : '',
-              onChange: (event) => {
-                if (typeof p.onCallField === 'function') p.onCallField('task', event && event.target ? event.target.value : '');
-              },
-            }),
-            h('label', { className: 'jk-kb-field' }, '结果'),
-            h('select', {
-              className: 'jk-kb-select',
-              'data-jk-kb-call-result': 'true',
-              value: normalizeSkillCallResult(callForm.result),
-              onChange: (event) => {
-                if (typeof p.onCallField === 'function') p.onCallField('result', event && event.target ? event.target.value : 'ok');
-              },
-            },
-              h('option', { value: 'ok' }, '成功'),
-              h('option', { value: 'fail' }, '失败')
-            ),
-            h('label', { className: 'jk-kb-field' }, '失败原因（result=fail 必填，≥4 字符）'),
-            h('input', {
-              type: 'text',
-              className: 'jk-kb-field-input',
-              'data-jk-kb-call-reason': 'true',
-              value: typeof callForm.reason === 'string' ? callForm.reason : '',
-              onChange: (event) => {
-                if (typeof p.onCallField === 'function') p.onCallField('reason', event && event.target ? event.target.value : '');
-              },
-            }),
-            h('label', { className: 'jk-kb-field' }, '产物路径（每行一个，仅 03..12 顶层目录）'),
-            h('textarea', {
-              className: 'jk-kb-textarea',
-              'data-jk-kb-call-outputs': 'true',
-              value: typeof callForm.outputs === 'string' ? callForm.outputs : '',
-              rows: 3,
-              onChange: (event) => {
-                if (typeof p.onCallField === 'function') p.onCallField('outputs', event && event.target ? event.target.value : '');
-              },
-            }),
-            callValidation.ok === true
-              ? null
-              : h('p', { className: 'jk-kb-hint', 'data-jk-kb-call-required': 'true' },
-                  '还需填写：' + callValidation.missing.map((key) => callMissingLabels[key] || key).join('、')),
-            callNotice
-              ? Alert({
-                  variant: callNotice.kind,
-                  'data-jk-kb-skill-call-notice': callNotice.kind,
-                  'aria-live': 'polite',
-                }, callNotice.text)
-              : null,
-            h('div', { className: 'jk-kb-curate-actions' },
-              Button({
-                variant: 'default',
-                className: 'jk-kb-guide-cta',
-                'data-jk-kb-call-submit': 'true',
-                disabled: callValidation.ok !== true || p.callBusy === true,
-                onClick: typeof p.onCallSubmit === 'function' ? p.onCallSubmit : undefined,
-              }, p.callBusy === true ? '提交中…' : '提交回执'),
-              Button({
-                variant: 'outline',
-                'data-jk-kb-call-cancel': 'true',
-                onClick: typeof p.onCallClose === 'function' ? p.onCallClose : undefined,
-              }, '取消')
-            )
-          )
-        : null;
-
-      const registrySection = h('section', {
-        className: 'jk-kb-skill-registry',
-        'data-jk-kb-skill-registry': registry.phase,
-      },
-        h('div', { className: 'jk-kb-reports-head' },
-          h('h3', { className: 'jk-kb-section-title' }, '已登记 SKILL'),
-          Button({
-            variant: 'outline',
-            'data-jk-kb-skill-view-refresh': 'true',
-            disabled: registry.phase === 'loading' && calls.phase === 'loading',
-            onClick: typeof p.onRefresh === 'function' ? p.onRefresh : undefined,
-          }, (registry.phase === 'loading' && calls.phase === 'loading') ? '加载中…' : '刷新'),
-          Button({
-            variant: 'outline',
-            'data-jk-kb-skill-call-new': 'true',
-            onClick: () => { if (typeof p.onCallOpen === 'function') p.onCallOpen(''); },
-          }, '记录一次调用')
-        ),
-        registry.phase === 'error'
-          ? h('div', { className: 'jk-kb-error', 'data-jk-kb-skill-registry-error': 'true' },
-              h('h3', { className: 'jk-kb-placeholder-title' }, '技能库不可用'),
-              h('p', { className: 'jk-kb-hint' }, '无法读取技能注册表（' + HOST_SKILL_REGISTRY_PATH + '）。'),
-              Button({
-                variant: 'outline',
-                'data-jk-kb-skill-registry-retry': 'true',
-                onClick: typeof p.onRetry === 'function' ? p.onRetry : undefined,
-              }, '重试')
-            )
-          : null,
-        registry.phase === 'loading'
-          ? h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-registry-loading': 'true' }, '正在读取技能注册表…')
-          : null,
-        registry.phase === 'ready' && registrySkills.length === 0
-          ? h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-registry-empty': 'true' }, '还没有自定义 SKILL，点上方『新建技能』')
-          : null,
-        registry.phase === 'ready' && registrySkills.length > 0
-          ? h('ul', { className: 'jk-kb-skill-list', 'data-jk-kb-skill-registry-list': 'true' },
-              registrySkills.map((skill) => h('li', {
-                key: skill.id,
-                className: 'jk-kb-skill-item',
-                'data-jk-kb-skill': skill.id,
-              },
-                h('span', { className: 'jk-kb-skill-id', 'data-jk-kb-skill-id': skill.id }, skill.id),
-                h('span', { className: 'jk-kb-skill-name' }, skill.name),
-                h('span', { className: 'jk-kb-skill-meta' }, skill.version),
-                skill.status ? h('span', { className: 'jk-kb-skill-status' }, skill.status) : null,
-                h('span', { className: 'jk-kb-skill-keywords' }, skill.keywords.length > 0 ? skill.keywords.join('、') : '—'),
-                Button({
-                  variant: 'outline',
-                  'data-jk-kb-skill-path': skill.id,
-                  disabled: !skill.path,
-                  onClick: () => { if (typeof p.onCopyPath === 'function') p.onCopyPath(skill.path); },
-                }, '复制路径'),
-                Button({
-                  variant: 'outline',
-                  'data-jk-kb-skill-call-entry': skill.id,
-                  onClick: () => { if (typeof p.onCallOpen === 'function') p.onCallOpen(skill.id); },
-                }, '记录一次调用')
-              ))
-            )
-          : null
-      );
-
-      const callsSection = h('section', {
-        className: 'jk-kb-skill-calls',
-        'data-jk-kb-skill-calls': calls.phase,
-      },
-        h('div', { className: 'jk-kb-cal-head' },
-          h('h3', { className: 'jk-kb-section-title' }, '调用日志'),
-          Button({ variant: 'outline', size: 'icon', 'data-jk-kb-skill-calls-prev': 'true', onClick: p.onPrev }, '‹'),
-          h('span', { className: 'jk-kb-cal-label', 'data-jk-kb-skill-calls-label': 'true' }, p.year + '年' + p.month + '月'),
-          Button({ variant: 'outline', size: 'icon', 'data-jk-kb-skill-calls-next': 'true', onClick: p.onNext }, '›')
-        ),
-        calls.phase === 'error'
-          ? h('div', { className: 'jk-kb-error', 'data-jk-kb-skill-calls-error': 'true' },
-              h('h3', { className: 'jk-kb-placeholder-title' }, '技能库不可用'),
-              h('p', { className: 'jk-kb-hint' }, '无法读取调用日志（' + HOST_SKILL_CALLS_PATH + '）。'),
-              Button({
-                variant: 'outline',
-                'data-jk-kb-skill-calls-retry': 'true',
-                onClick: typeof p.onRetry === 'function' ? p.onRetry : undefined,
-              }, '重试')
-            )
-          : null,
-        calls.phase === 'loading'
-          ? h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-calls-loading': 'true' }, '正在读取调用日志…')
-          : null,
-        calls.phase === 'ready'
-          ? h('div', null,
-              h('div', { className: 'jk-kb-cal-grid', 'data-jk-kb-skill-calls-grid': 'month' },
-                WEEKDAY_LABELS.map((labelText, index) => h('span', { key: 'weekday-' + index, className: 'jk-kb-cal-weekday' }, labelText)),
-                grid.cells.map((cell) => (cell.blank
-                  ? h('span', { key: cell.key, className: 'jk-kb-cal-cell jk-kb-cal-cell-blank' })
-                  : h('button', {
-                      key: cell.key,
-                      type: 'button',
-                      className: 'jk-kb-cal-cell jk-kb-cal-day'
-                        + (cell.hasTasks ? ' jk-kb-cal-day-active' : '')
-                        + (cell.date === p.today ? ' jk-kb-cal-today' : '')
-                        + (cell.date === p.selectedDate ? ' jk-kb-cal-selected' : ''),
-                      'data-jk-kb-skill-call-day': cell.date,
-                      'data-jk-kb-skill-call-count': String(cell.runCount),
-                      'data-jk-kb-skill-call-failed': cell.hasFailed ? 'true' : undefined,
-                      'data-jk-kb-skill-call-today': cell.date === p.today ? 'true' : undefined,
-                      onClick: () => { if (typeof p.onSelectDay === 'function') p.onSelectDay(cell.date); },
-                    },
-                      h('span', { className: 'jk-kb-cal-day-number' }, String(cell.day)),
-                      cell.hasTasks ? h('span', { className: 'jk-kb-cal-day-count' }, String(cell.runCount)) : null,
-                      cell.hasFailed ? h('span', { className: 'jk-kb-cal-day-failed', 'data-jk-kb-skill-call-failed-dot': 'true' }, '●') : null
-                    )))
-              ),
-              Object.keys(grid.groups).length === 0
-                ? h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-calls-empty': 'true' }, '本月暂无调用')
-                : null
-            )
-          : null,
-        p.selectedDate
-          ? h('div', { className: 'jk-kb-ledger-day', 'data-jk-kb-skill-call-day-panel': p.selectedDate },
-              h('h3', { className: 'jk-kb-section-title' }, p.selectedDate + ' 调用'),
-              dayCalls.length > 0
-                ? h('ul', { className: 'jk-kb-ledger-runs', 'data-jk-kb-skill-calls-day-list': 'true' },
-                    dayCalls.map((call) => h('li', { key: call.key, className: 'jk-kb-ledger-run-item' },
-                      h('div', { className: 'jk-kb-ledger-run', 'data-jk-kb-skill-call': call.key },
-                        h('span', { className: 'jk-kb-skill-call-time', 'data-jk-kb-skill-call-time': call.key }, call.tsText),
-                        h('span', { className: 'jk-kb-skill-call-name' }, call.name + ' ' + call.version),
-                        h('span', { className: 'jk-kb-skill-call-task' }, call.task),
-                        h('span', {
-                          className: 'jk-kb-status ' + (call.result === 'fail' ? 'jk-kb-status-failed' : (call.result === 'ok' ? 'jk-kb-status-done' : '')),
-                        }, call.resultLabel),
-                        call.reason ? h('span', { className: 'jk-kb-skill-call-reason', 'data-jk-kb-skill-call-reason': call.key }, call.reason) : null,
-                        h('span', { className: 'jk-kb-skill-call-outputs', 'data-jk-kb-skill-call-outputs': call.key },
-                          call.outputs.length > 0 ? call.outputs.join('、') : '—')
-                      )
-                    ))
-                  )
-                : h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-calls-day-empty': 'true' }, '当天暂无调用')
-            )
-          : null
-      );
+      const skills = p.skills && typeof p.skills === 'object'
+        ? p.skills
+        : { phase: 'loading', groups: [], count: 0, error: null };
+      const groups = Array.isArray(skills.groups) ? skills.groups : [];
+      const total = typeof skills.count === 'number' ? skills.count : 0;
 
       return h('div', { className: 'jk-kb-skill-view', 'data-jk-kb-skill-view': 'true' },
-        callFormBox,
-        registrySection,
-        callsSection
+        h('section', { className: 'jk-kb-skill-registry', 'data-jk-kb-skill-registry': skills.phase },
+          h('div', { className: 'jk-kb-reports-head' },
+            h('h3', { className: 'jk-kb-section-title' }, '技能说明'),
+            h('span', { className: 'jk-kb-hint', 'data-jk-kb-skill-count': 'true' }, '共 ' + total + ' 项技能，一行一个')
+          ),
+          skills.phase === 'error'
+            ? h('div', { className: 'jk-kb-error', 'data-jk-kb-skill-registry-error': 'true' },
+                h('h3', { className: 'jk-kb-placeholder-title' }, '技能库不可用'),
+                h('p', { className: 'jk-kb-hint' }, '无法读取技能目录（' + HOST_SKILLS_PATH + '）。'),
+                skills.error
+                  ? h('p', { className: 'jk-kb-note' }, '详情：' + (skills.error.code || 'unknown') + ' ' + (skills.error.message || ''))
+                  : null,
+                Button({
+                  variant: 'outline',
+                  'data-jk-kb-skill-registry-retry': 'true',
+                  onClick: typeof p.onRetry === 'function' ? p.onRetry : undefined,
+                }, '重试')
+              )
+            : null,
+          skills.phase === 'loading'
+            ? h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-registry-loading': 'true' }, '正在读取技能目录…')
+            : null,
+          skills.phase === 'ready' && groups.length === 0
+            ? h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-registry-empty': 'true' }, '暂无技能')
+            : null,
+          skills.phase === 'ready' && groups.length > 0
+            ? groups.map((group) => h('div', {
+                key: group.key,
+                className: 'jk-kb-skill-desc-group',
+                'data-jk-kb-skill-desc-group': group.key,
+              },
+                h('p', { className: 'jk-kb-skill-desc-group-title' }, group.label),
+                h('ul', { className: 'jk-kb-skill-desc-list' },
+                  group.skills.map((skill) => h('li', {
+                    key: skill.id,
+                    className: 'jk-kb-skill-desc-item',
+                    'data-jk-kb-skill-desc': skill.id,
+                  },
+                    h('span', { className: 'jk-kb-skill-desc-name' }, skill.label),
+                    h('span', { className: 'jk-kb-skill-desc-purpose' }, skill.purpose || '—'))))))
+            : null
+        )
       );
     }
 
@@ -9477,39 +9230,58 @@ window.__ModuleLoader__.load({
           )
         ),
         h('div', { className: 'jk-kb-panel-body' },
-          // shadcn/ui Sidebar 结构：Header（品牌）→ Content（菜单组 + 执行任务组）→ Footer（数字时钟占位）。
-          h('aside', { className: 'jk-kb-sidebar', 'data-jk-kb-sidebar': 'true' },
+          // shadcn/ui Sidebar 结构：Header（品牌 + 折叠开关）→ Content（菜单组 + 执行任务组）→ Footer（数字时钟占位）。
+          // data-collapsed 驱动 icon 折叠模式：窄列只留品牌图标与菜单图标，任务组/时钟/文字全部隐藏。
+          h('aside', {
+            className: 'jk-kb-sidebar',
+            'data-jk-kb-sidebar': 'true',
+            'data-collapsed': uiState.sidebarCollapsed ? 'true' : 'false',
+          },
             SidebarHeader(null,
               h('div', { className: 'jk-kb-sidebar-brand', 'data-jk-kb-sidebar-brand': 'true' },
                 h('span', { className: 'jk-kb-sidebar-brand-logo', 'data-jk-kb-sidebar-logo': 'true' },
                   BrandLogoMark({ width: 18, height: 18 })),
                 h('span', { className: 'jk-kb-sidebar-brand-name', 'data-jk-kb-sidebar-brand-name': 'true' }, PLUGIN_NAME)
-              )
+              ),
+              Button({
+                variant: 'ghost',
+                size: 'icon',
+                className: 'jk-kb-sidebar-toggle',
+                'data-jk-kb-sidebar-toggle': 'true',
+                'aria-expanded': uiState.sidebarCollapsed ? 'false' : 'true',
+                title: uiState.sidebarCollapsed ? '展开侧边栏' : '折叠侧边栏',
+                onClick: () => dispatch({ type: 'toggleSidebar' }),
+              }, PanelLeftIcon({ width: 16, height: 16 }))
             ),
             SidebarContent(null,
               MenusNav({
                 rootStatus: menuRootStatus,
                 activeId: activeMenu.id,
+                collapsed: uiState.sidebarCollapsed,
                 onSelect: (menuId) => {
                   // 切菜单一律回到列表页：切走再回来不该停在上次的详情。
                   setSelectedRunId('');
                   dispatch({ type: 'select', id: menuId });
                 },
               }),
-              menuRootStatus === 'no-root'
-                ? TaskListSkeleton()
-                : SidebarTasks({
-                    feed: runsFeed,
-                    expanded: uiState.expanded,
-                    onToggle: () => dispatch({ type: 'toggleTasks' }),
-                    onRetry: () => setSidebarReload(sidebarReload + 1),
-                    onSelectRun: (runId) => {
-                      setSelectedRunId(runId == null ? '' : String(runId));
-                      dispatch({ type: 'select', id: TASKS_ID });
-                    },
-                  })
+              // 折叠态窄列放不下任务列表，只保留菜单图标列。
+              uiState.sidebarCollapsed
+                ? null
+                : (menuRootStatus === 'no-root'
+                  ? TaskListSkeleton()
+                  : SidebarTasks({
+                      feed: runsFeed,
+                      expanded: uiState.expanded,
+                      onToggle: () => dispatch({ type: 'toggleTasks' }),
+                      onRetry: () => setSidebarReload(sidebarReload + 1),
+                      onSelectRun: (runId) => {
+                        setSelectedRunId(runId == null ? '' : String(runId));
+                        dispatch({ type: 'select', id: TASKS_ID });
+                      },
+                    }))
             ),
-            SidebarFooter(null, h(SidebarClock, null))
+            // 折叠态隐藏时钟（8 字符时间放不进窄列）。
+            uiState.sidebarCollapsed ? null : SidebarFooter(null, h(SidebarClock, null))
           ),
           h('section', { className: 'jk-kb-content', 'data-jk-kb-page': activeMenu.id },
             PanelContent({
@@ -9911,6 +9683,7 @@ window.__ModuleLoader__.load({
       SettingsSection: SettingsSection,
       visibleMenus: visibleMenus,
       MenusNav: MenusNav,
+      PanelLeftIcon: PanelLeftIcon,
       SidebarHeader: SidebarHeader,
       SidebarContent: SidebarContent,
       SidebarFooter: SidebarFooter,
