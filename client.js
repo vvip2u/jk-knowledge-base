@@ -39,6 +39,7 @@ window.__ModuleLoader__.load({
     const EXPERTS_ID = 'experts';
     const FILES_ID = 'files';
     const TASKS_ID = 'tasks';
+    const SKILLS_ID = 'skills';
     const USAGE_ID = 'usage';
     // 运行中的任务按 1.5s 全量刷新一次；全部结束后立即停止轮询。
     const POLL_INTERVAL_MS = 1500;
@@ -399,6 +400,10 @@ window.__ModuleLoader__.load({
     const MenuIconUsage = makeNavIcon([
       'M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2',
     ]);
+    // 技能管理菜单（lucide Wrench）。
+    const MenuIconSkills = makeNavIcon([
+      'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
+    ]);
     // 品牌 Logo：星球填充图标（iconfont 导出，1024 画布单 path），fill 跟随 currentColor，放在品牌色圆底上由 CSS 控制。
     const BRAND_LOGO_PATH = 'M1023.968793 512.0972c0-282.258242-228.984556-511.073966-511.452563-511.073966-282.473122 0-511.462795 228.815722-511.462795 511.073966 0 260.737573 195.390741 475.854231 447.837044 507.156 14.231147 2.999101 31.564741 4.746785 52.209522 4.746785 5.795601 0 11.384509-0.304924 16.78207-0.857471C797.877943 1020.265179 1023.968793 792.575015 1023.968793 512.0972zM950.836169 519.328399c-1.471411-25.500029-4.8399-50.460814-9.969375-74.718637 0.455339-8.661681 0.579151-16.868022 0.346877-24.49726 6.343032 29.660502 9.687986 60.432236 9.687986 91.984698C950.902679 514.513057 950.875051 516.921751 950.836169 519.328399zM74.120572 512.0972c0-30.977405 3.225236-61.200685 9.345202-90.360825 18.931886 20.247766 63.554125 19.769915 74.436224-10.483039 19.471131 11.604504 45.637286 13.717484 45.637286 36.912165 0 76.550227 2.725897 158.618759 72.279247 159.886547 1.958471 0.025581 38.788778 13.957944 56.316786 59.416164 6.060619 15.711767 30.032959 0 56.321902 0 13.124008 0 0 22.110053 0 69.921714 0 47.626454 102.680569 120.959633 102.680569 120.959633-0.475804 31.525858 0.818588 57.017702 3.442161 77.38314-23.177287-0.426689-42.709813 2.645062-58.055262 7.868674C230.627375 907.644909 74.120572 728.142955 74.120572 512.0972zM620.440877 936.783561c-2.272604-11.126653-12.215375-17.220015-30.356301-12.451742 14.474677-61.640676 21.511461-96.169728 51.728602-122.387045 43.719746-37.898564 5.206218-80.04355-28.063232-75.076769-26.222433 3.958895-9.651149-32.467234-33.055594-34.481983-23.404445-1.958471-53.969486-48.511552-87.653346-64.530291-17.855443-8.479545-35.402894-31.203539-62.940184-32.221658-24.407215-0.946492-60.07615 20.637618-60.07615 3.999824 0-53.590889-5.426213-91.832236-6.541539-107.104012-0.900446-12.269607-8.020113-4.132845 24.974087-3.339838 17.956744 0.48092 9.185577-36.067997 26.959162-37.495409 17.456382-1.381367 59.052916 16.341056 69.650557 9.277668 9.845564-6.577352 72.371338 164.12683 72.371338 28.216717 0-16.126177-8.351641-44.163828 0-59.436629 33.030013-60.352424 63.952163-109.539311 61.175104-116.734697-1.575781-4.050986-33.792323-7.39594-59.569649 1.253462-8.699541 2.904963 2.766826 16.530355-9.727892 19.440434-46.814006 10.807404-88.175196-12.622623-73.691309-34.645701 14.831785-22.570509 68.571044-9.845564 73.282016-55.124718 2.710549-25.935927 4.956549-55.974003 6.45968-78.298935 63.004648 9.852726 56.069163-81.7677-37.613081-91.574381 189.525561 2.217349 350.128371 124.61565 409.062591 294.48692-2.980683-2.718734-6.448425-4.371258-10.453365-4.774413-28.324157-70.749511-97.074267-19.547874-73.752703 42.855112-124.959457 96.057172-92.973143 163.052434-51.9179 201.416569 21.603552 20.166931 42.200242 50.496628 55.610754 72.279247-14.596442 42.561444 53.781211 25.518448 87.503954-46.709636C890.911457 782.384621 771.249286 898.633281 620.440877 936.783561z';
     function BrandLogoMark(props) {
@@ -428,6 +433,8 @@ window.__ModuleLoader__.load({
       'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
       'M9 3v18',
     ]);
+    // 下箭头（lucide ChevronDown）：技能行展开指示器，展开时 CSS 旋转 180°。
+    const ChevronDownIcon = makeNavIcon(['M6 9l6 6 6-6']);
 
     // 未配置根目录时只保留仪表盘；其它状态（loading/error/ready）保持完整菜单。
     function visibleMenus(rootStatus) {
@@ -441,6 +448,7 @@ window.__ModuleLoader__.load({
       { id: EXPERTS_ID, label: '业务专家', icon: MenuIconExperts, description: '按业务领域维护专家角色、绑定技能与提示词；卡片在设置页管理。' },
       { id: FILES_ID, label: '文件管理', icon: MenuIconFiles, description: '浏览知识库目录与文件：文件树导航、文件夹列表与按格式预览文件。' },
       { id: TASKS_ID, label: '任务管理', icon: MenuIconTasks, description: '执行任务、整理报告与技能台账。' },
+      { id: SKILLS_ID, label: '技能管理', icon: MenuIconSkills, description: '浏览全部技能：按岗位分类查看技能说明与产出配置。' },
       { id: USAGE_ID, label: '使用信息', icon: MenuIconUsage, description: '知识库运行状态与宿主健康信息。' },
     ];
 
@@ -1258,7 +1266,7 @@ window.__ModuleLoader__.load({
     }
 
     // ───────────────────────────── 环境体检（preflight） ─────────────────────────────
-    // ───────────────────────────── 入柜（curate）与技能目录 ─────────────────────────────
+    // ───────────────────────────── 技能目录 ─────────────────────────────
     function fetchSkills() {
       return hostRequest(HOST_SKILLS_PATH, { method: 'GET' });
     }
@@ -1285,6 +1293,10 @@ window.__ModuleLoader__.load({
         role: role,
         stage: stage,
         purpose: typeof skill.purpose === 'string' ? skill.purpose : '',
+        // 展开明细需要的原始字段：岗位原名 / 产出目录 / 产出物 ID 前缀。
+        profession: typeof skill.profession === 'string' ? skill.profession : role,
+        outputDir: typeof skill.outputDir === 'string' ? skill.outputDir : '',
+        idPrefix: typeof skill.idPrefix === 'string' ? skill.idPrefix : '',
         label: name + (stage ? '（' + stage + '）' : ''),
       };
     }
@@ -1323,6 +1335,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // 入柜（curate）run 的提交封装：业务专家对话页发送消息时复用（把输入文本作为 curate run 提交）。
     function buildCuratePayload(input) {
       const source = input && typeof input === 'object' ? input : {};
       const payload = {
@@ -1334,11 +1347,6 @@ window.__ModuleLoader__.load({
       if (typeof source.title === 'string' && source.title.trim()) payload.input.title = source.title.trim();
       if (typeof source.source === 'string' && source.source.trim()) payload.input.source = source.source.trim();
       return payload;
-    }
-
-    function canSubmitCurate(form, busy) {
-      const text = form && typeof form.text === 'string' ? form.text : '';
-      return busy !== true && text.trim().length > 0;
     }
 
     async function startCurateRequest(input) {
@@ -1354,25 +1362,6 @@ window.__ModuleLoader__.load({
         code: (result && result.error && result.error.code) || 'request-failed',
         checks: result && result.error && Array.isArray(result.error.checks) ? result.error.checks : [],
         message: describeRunError(result),
-      };
-    }
-
-    // 提交结果 → UI 动作（成功即收起表单 + 刷新列表；失败时 422 checks 走既有体检卡片）。
-    function planCurateResult(outcome) {
-      if (outcome && outcome.started === true) {
-        return {
-          closeForm: true,
-          refresh: true,
-          expandChecks: false,
-          notice: { kind: 'ok', text: '已提交入柜，正在刷新任务列表…' },
-        };
-      }
-      const checks = outcome && Array.isArray(outcome.checks) ? outcome.checks : [];
-      return {
-        closeForm: false,
-        refresh: false,
-        expandChecks: checks.length > 0,
-        notice: { kind: 'error', text: (outcome && outcome.message) || '提交失败' },
       };
     }
 
@@ -3435,7 +3424,7 @@ window.__ModuleLoader__.load({
       '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-content{padding:10px 0 2px;}',
       '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-group{padding:0;}',
       '.jk-kb-sidebar[data-collapsed="true"] .jk-kb-sidebar-menu-button{justify-content:center;gap:0;padding:8px 0;}',
-      '.jk-kb-sidebar-task-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}',
+      '.jk-kb-sidebar-task-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;}',
       '.jk-kb-section-title{margin:0;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary);}',
       '.jk-kb-task-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}',
       '.jk-kb-task{display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);}',
@@ -3484,8 +3473,12 @@ window.__ModuleLoader__.load({
       '.jk-kb-guide-bar{display:flex;align-items:center;gap:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:8px 12px;background:var(--dsw-alias-bg-layer-2);}',
       '.jk-kb-guide-bar-text{flex:1;min-width:0;font-size:12px;color:var(--dsw-alias-label-secondary);}',
       '.jk-kb-guide-bar-action{flex:none;}',
-      '.jk-kb-sidebar-task{display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer;align-items:flex-start;}',
-      '.jk-kb-sidebar-task-meta{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--dsw-alias-label-secondary);}',
+      // 执行任务条目：卡片式分隔（边框 + 圆角 + 内边距），左侧两行（标题 / 相对时间），右侧状态
+      '.jk-kb-sidebar-task{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer;padding:6px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-1);transition:background .15s ease,border-color .15s ease;}',
+      '.jk-kb-sidebar-task:hover{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l2);}',
+      '.jk-kb-sidebar-task-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;align-items:flex-start;}',
+      '.jk-kb-sidebar-task .jk-kb-task-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.jk-kb-sidebar-task-meta{flex:none;display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--dsw-alias-label-secondary);}',
       '.jk-kb-sidebar-task-status-label{white-space:nowrap;}',
       '.jk-kb-sidebar-task-time{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
       '.jk-kb-task-heartbeat{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-brand-primary);animation:jk-kb-heartbeat 1.2s ease-in-out infinite;}',
@@ -3672,14 +3665,33 @@ window.__ModuleLoader__.load({
       '.jk-kb-skill-registry{display:flex;flex-direction:column;gap:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;}',
       '.jk-kb-skill-matches{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:2px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);}',
       '.jk-kb-skill-match{}',
-      // 技能说明视图：按岗位分组，组内一行一个技能（名称 + 说明）
+      // 技能说明视图：左栏分类导航（纵向）+ 右栏技能列表（行可展开明细）
+      '.jk-kb-skill-layout{display:flex;gap:12px;align-items:flex-start;}',
+      '.jk-kb-skill-roles{flex:0 0 168px;display:flex;flex-direction:column;gap:2px;padding:8px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);}',
+      '.jk-kb-skill-role-item{display:flex;align-items:center;gap:8px;font:inherit;font-size:12px;line-height:1.5;text-align:left;cursor:pointer;border:0;border-radius:8px;background:none;color:var(--dsw-alias-label-secondary);padding:7px 10px;transition:background-color .15s ease,color .15s ease;}',
+      '.jk-kb-skill-role-item:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      '.jk-kb-skill-role-item:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px;}',
+      '.jk-kb-skill-role-item[data-active="true"]{background:var(--dsw-alias-button-info-fill);color:var(--primary-foreground);font-weight:600;}',
+      '.jk-kb-skill-role-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.jk-kb-skill-role-count{flex:none;font-size:10px;font-variant-numeric:tabular-nums;opacity:.75;}',
+      '.jk-kb-skill-list{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;}',
       '.jk-kb-skill-desc-group{display:flex;flex-direction:column;gap:4px;}',
       '.jk-kb-skill-desc-group-title{margin:8px 0 0;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);}',
       '.jk-kb-skill-desc-list{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px;}',
-      '.jk-kb-skill-desc-item{display:flex;align-items:baseline;gap:12px;padding:7px 10px;border-radius:8px;font-size:12px;line-height:1.6;}',
+      '.jk-kb-skill-desc-item{display:flex;flex-direction:column;border-radius:8px;font-size:12px;line-height:1.6;}',
       '.jk-kb-skill-desc-item:hover{background:var(--dsw-alias-interactive-bg-hover);}',
+      '.jk-kb-skill-desc-item[data-open="true"]{background:var(--dsw-alias-interactive-bg-hover);}',
+      '.jk-kb-skill-desc-row{display:flex;align-items:baseline;gap:12px;padding:7px 10px;cursor:pointer;}',
+      '.jk-kb-skill-desc-row:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px;}',
       '.jk-kb-skill-desc-name{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--dsw-alias-label-primary);}',
       '.jk-kb-skill-desc-purpose{flex:1;min-width:0;color:var(--dsw-alias-label-secondary);}',
+      '.jk-kb-skill-desc-chevron{flex:none;display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);transition:transform .15s ease;}',
+      '.jk-kb-skill-desc-item[data-open="true"] .jk-kb-skill-desc-chevron{transform:rotate(180deg);}',
+      '.jk-kb-skill-desc-detail{padding:2px 10px 10px 24px;}',
+      '.jk-kb-skill-desc-detail-grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:6px 16px;padding:8px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2,var(--dsw-alias-bg-layer-1));}',
+      '.jk-kb-skill-desc-field{display:flex;flex-direction:column;gap:1px;min-width:0;}',
+      '.jk-kb-skill-desc-field-label{font-size:10px;font-weight:600;color:var(--dsw-alias-label-tertiary);}',
+      '.jk-kb-skill-desc-field-value{font-size:12px;color:var(--dsw-alias-label-secondary);word-break:break-all;}',
       '.jk-kb-experts{display:flex;flex-direction:column;gap:12px;}',
       '.jk-kb-experts-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;}',
       '.jk-kb-experts-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}',
@@ -4728,6 +4740,8 @@ window.__ModuleLoader__.load({
         }
         return h(TasksPage, { onOpenRun: p.onOpenRun, seedFeed: p.runsFeed, onFeed: p.onFeed });
       }
+      // 技能管理：全量技能按岗位分类浏览 + 行展开明细（从任务管理「技能」标签页迁出）。
+      if (activeMenu.id === SKILLS_ID) return h(SkillViewPage, null);
       if (activeMenu.id === USAGE_ID) return h(UsagePage, null);
       return PlaceholderPage(activeMenu);
     }
@@ -5867,22 +5881,22 @@ window.__ModuleLoader__.load({
               key: run.id || item.id,
               className: 'jk-kb-sidebar-task',
               'data-jk-kb-sidebar-task': run.id,
+              'data-jk-kb-sidebar-task-status': run.status,
               role: 'button',
               tabIndex: 0,
               onClick: () => { if (typeof p.onSelectRun === 'function') p.onSelectRun(run.id); },
             },
-              h('span', { className: 'jk-kb-task-name' }, run.title),
-              h('span', {
-                className: 'jk-kb-sidebar-task-meta',
-                'data-jk-kb-sidebar-task-status': run.status,
-              },
+              h('div', { className: 'jk-kb-sidebar-task-main' },
+                h('span', { className: 'jk-kb-task-name', title: run.title }, run.title),
+                h('span', { className: 'jk-kb-sidebar-task-time', 'data-jk-kb-sidebar-task-time': 'true' },
+                  formatRelativeTime(item.startedAt))
+              ),
+              h('span', { className: 'jk-kb-sidebar-task-meta' },
                 run.status === 'running'
                   ? h('span', { className: 'jk-kb-task-heartbeat', 'aria-hidden': 'true' })
                   : null,
                 h('span', { className: 'jk-kb-sidebar-task-status-label' }, run.statusLabel)
-              ),
-              h('span', { className: 'jk-kb-sidebar-task-time', 'data-jk-kb-sidebar-task-time': 'true' },
-                formatRelativeTime(item.startedAt))
+              )
             );
           })
         ),
@@ -5921,11 +5935,6 @@ window.__ModuleLoader__.load({
     function RunsBoardPage(props) {
       const p = props || {};
       const [state, setState] = React.useState(() => seedRunsPageState(p.seedFeed));
-      const [curateOpen, setCurateOpen] = React.useState(false);
-      const [curateForm, setCurateForm] = React.useState({ text: '', skillId: '', expertId: '', title: '', source: '', showAllSkills: false });
-      const [curateBusy, setCurateBusy] = React.useState(false);
-      const [skills, setSkills] = React.useState({ phase: 'loading', groups: [], count: 0, error: null });
-      const [experts, setExperts] = React.useState({ phase: 'loading', list: [], error: null });
       const [skillFormOpen, setSkillFormOpen] = React.useState(false);
       const [skillForm, setSkillForm] = React.useState({ name: '', purpose: '', scenario: '', keywords: '', fields: '' });
       const [skillAck, setSkillAck] = React.useState(false);
@@ -5975,26 +5984,6 @@ window.__ModuleLoader__.load({
       }
 
       // 技能目录只取一次（失败只影响下拉，不影响页面）。
-      async function loadSkills() {
-        setSkills((prev) => Object.assign({}, prev, { phase: 'loading' }));
-        const result = await fetchSkills();
-        if (!aliveRef.current) return;
-        const norm = normalizeSkillsResponse(result);
-        setSkills(norm.ok === true
-          ? { phase: 'ready', groups: norm.groups, count: norm.count, error: null }
-          : { phase: 'error', groups: [], count: 0, error: norm.error });
-      }
-
-      async function loadExpertsForCurate() {
-        setExperts((prev) => Object.assign({}, prev, { phase: 'loading' }));
-        const result = await fetchExperts({ status: 'active' });
-        if (!aliveRef.current) return;
-        const norm = normalizeExpertsResponse(result);
-        setExperts(norm.ok === true
-          ? { phase: 'ready', list: norm.experts, error: null }
-          : { phase: 'error', list: [], error: norm.error });
-      }
-
       async function loadSkillRegistryForRisk() {
         setSkillRegistry((prev) => Object.assign({}, prev, { phase: 'loading' }));
         const result = await fetchSkillRegistry({ limit: 50 });
@@ -6008,9 +5997,7 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         aliveRef.current = true;
         if (!(p.seedFeed && p.seedFeed.phase === 'ready')) refresh();
-        loadSkills();
         loadSkillRegistryForRisk();
-        loadExpertsForCurate();
         return function () { aliveRef.current = false; };
       }, [p.reloadKey]);
 
@@ -6091,25 +6078,6 @@ window.__ModuleLoader__.load({
           type: 'notice',
           notice: { kind: 'error', text: (outcome && outcome.message) || '整理启动失败' },
         }));
-      }
-
-      function setCurateField(field, value) {
-        setCurateForm((prev) => Object.assign({}, prev, { [field]: value }));
-      }
-
-      async function submitCurate() {
-        if (!canSubmitCurate(curateForm, curateBusy)) return;
-        setCurateBusy(true);
-        const outcome = await startCurateRequest(curateForm);
-        if (!aliveRef.current) return;
-        setCurateBusy(false);
-        const plan = planCurateResult(outcome);
-        setState((prev) => reduceRunsPage(prev, { type: 'notice', notice: plan.notice }));
-        if (plan.closeForm) {
-          setCurateOpen(false);
-          setCurateForm({ text: '', skillId: '', expertId: '', title: '', source: '', showAllSkills: false });
-        }
-        if (plan.refresh) await refresh();
       }
 
       usePollingEffect(refresh, shouldPollRunsPage(state));
@@ -6195,15 +6163,6 @@ window.__ModuleLoader__.load({
         onConfirm: () => onRunKind('bootstrap'),
         onCancelConfirm: () => setState((prev) => reduceRunsPage(prev, { type: 'confirm', kind: '' })),
         onRetry: refresh,
-        curateOpen: curateOpen,
-        curateForm: curateForm,
-        curateBusy: curateBusy,
-        skills: skills,
-        experts: experts,
-        onCurateOpen: () => setCurateOpen(true),
-        onCurateClose: () => { setCurateOpen(false); setCurateBusy(false); },
-        onCurateField: setCurateField,
-        onCurateSubmit: submitCurate,
         onMaintainOpen: requestMaintain,
         onMaintainConfirm: confirmMaintain,
         onMaintainCancel: () => setState((prev) => reduceRunsPage(prev, { type: 'confirm', kind: '' })),
@@ -6233,26 +6192,6 @@ window.__ModuleLoader__.load({
       const confirming = p.confirm === 'bootstrap';
       const maintainConfirming = p.confirm === 'maintain';
       const error = p.error && typeof p.error === 'object' ? p.error : null;
-      const curateForm = p.curateForm && typeof p.curateForm === 'object'
-        ? p.curateForm
-        : { text: '', skillId: '', title: '', source: '' };
-      const skills = p.skills && typeof p.skills === 'object'
-        ? p.skills
-        : { phase: 'loading', groups: [], count: 0 };
-      const curateExperts = p.experts && p.experts.phase === 'ready' && Array.isArray(p.experts.list)
-        ? p.experts.list
-        : [];
-      const curateExpert = curateExperts.filter((expert) => expert.id === curateForm.expertId)[0] || null;
-      const curateShowAll = curateForm.showAllSkills === true;
-      const allCurateGroups = Array.isArray(skills.groups) ? skills.groups : [];
-      const curateSkillGroups = curateExpert && !curateShowAll
-        ? filterSkillGroupsByIds(allCurateGroups, curateExpert.skillIds)
-        : allCurateGroups;
-      const curateSkillWarning = !!(curateExpert && curateForm.skillId
-        && (curateExpert.skillIds || []).indexOf(curateForm.skillId) < 0);
-      const curateSkillPresent = curateSkillGroups.some((group) => (group.skills || []).some((skill) => skill.id === curateForm.skillId));
-      const curateText = typeof curateForm.text === 'string' ? curateForm.text : '';
-      const curateCanSubmit = canSubmitCurate(curateForm, p.curateBusy === true);
 
       const actions = h('div', { className: 'jk-kb-run-actions' },
         RUN_KINDS.map((kind) => Button({
@@ -6262,13 +6201,6 @@ window.__ModuleLoader__.load({
           disabled: busy,
           onClick: () => { if (typeof p.onRunKind === 'function') p.onRunKind(kind.id); },
         }, kind.action)),
-        Button({
-          key: 'curate',
-          variant: 'outline',
-          'data-jk-kb-curate-open': 'true',
-          disabled: busy,
-          onClick: typeof p.onCurateOpen === 'function' ? p.onCurateOpen : undefined,
-        }, '入柜'),
         Button({
           key: 'maintain',
           variant: 'outline',
@@ -6384,137 +6316,6 @@ window.__ModuleLoader__.load({
               onClick: typeof p.onMaintainCancel === 'function' ? p.onMaintainCancel : undefined,
             },
           })
-        : null;
-
-      const curateBox = p.curateOpen === true
-        ? h('section', { className: 'jk-kb-curate', 'data-jk-kb-curate-form': 'true' },
-            h('h3', { className: 'jk-kb-curate-title' }, '入柜'),
-            h('p', { className: 'jk-kb-hint' }, '把原始信息按内置技能定型成卡片，落进知识库。'),
-            h('label', { className: 'jk-kb-field' }, '原始文本（必填）'),
-            h('textarea', {
-              className: 'jk-kb-textarea',
-              'data-jk-kb-curate-text': 'true',
-              value: curateText,
-              rows: 5,
-              placeholder: '粘贴访谈 / 会议 / 文章 / 故障记录…',
-              onChange: (event) => {
-                if (typeof p.onCurateField === 'function') {
-                  p.onCurateField('text', event && event.target ? event.target.value : '');
-                }
-              },
-            }),
-            curateText.trim().length > 0
-              ? null
-              : h('p', { className: 'jk-kb-hint', 'data-jk-kb-curate-required': 'true' }, '请先粘贴原始文本'),
-            h('label', { className: 'jk-kb-field' }, '技能（可选；空 = 让 agent 自动判定）'),
-            h('select', {
-              className: 'jk-kb-select',
-              'data-jk-kb-curate-skill': 'true',
-              value: typeof curateForm.skillId === 'string' ? curateForm.skillId : '',
-              onChange: (event) => {
-                if (typeof p.onCurateField === 'function') {
-                  p.onCurateField('skillId', event && event.target ? event.target.value : '');
-                }
-              },
-            },
-              h('option', { value: '' }, '让 agent 自动判定'),
-              skills.phase === 'error'
-                ? h('option', { value: '', disabled: true, 'data-jk-kb-curate-skills-unavailable': 'true' }, '技能目录不可用')
-                : (skills.phase === 'loading'
-                    ? h('option', { value: '', disabled: true }, '技能目录加载中…')
-                    : curateSkillGroups.map((group) => h('optgroup', {
-                        key: group.key,
-                        label: group.label,
-                        'data-jk-kb-curate-group': group.key,
-                      },
-                        (Array.isArray(group.skills) ? group.skills : []).map((skill) => h('option', {
-                          key: skill.id,
-                          value: skill.id,
-                        }, skill.label))
-                      )).concat(curateSkillWarning && !curateSkillPresent
-                        ? [h('option', {
-                            key: 'out-of-range',
-                            value: curateForm.skillId,
-                            'data-jk-kb-curate-skill-out-of-range': 'true',
-                          }, curateForm.skillId + '（不在该专家绑定范围）')]
-                        : []))
-            ),
-            h('label', { className: 'jk-kb-field' }, '业务专家（可选，入柜时指定由谁处理）'),
-            h('select', {
-              className: 'jk-kb-select',
-              'data-jk-kb-curate-expert': 'true',
-              value: typeof curateForm.expertId === 'string' ? curateForm.expertId : '',
-              onChange: (event) => {
-                if (typeof p.onCurateField === 'function') {
-                  p.onCurateField('expertId', event && event.target ? event.target.value : '');
-                }
-              },
-            },
-              h('option', { value: '' }, '不指定'),
-              (p.experts && p.experts.phase === 'ready' && Array.isArray(p.experts.list) && p.experts.list.length > 0)
-                ? p.experts.list.map((expert) => h('option', {
-                    key: expert.id,
-                    value: expert.id,
-                  }, expert.id + ' · ' + expert.name))
-                : h('option', { value: '', disabled: true, 'data-jk-kb-curate-no-experts': 'true' }, '暂无业务专家')
-            ),
-            h('label', { className: 'jk-kb-check jk-kb-field' },
-              h('input', {
-                type: 'checkbox',
-                'data-jk-kb-curate-show-all-skills': 'true',
-                checked: curateShowAll,
-                disabled: !curateExpert,
-                onChange: (event) => {
-                  if (typeof p.onCurateField === 'function') {
-                    p.onCurateField('showAllSkills', !!(event && event.target && event.target.checked));
-                  }
-                },
-              }),
-              h('span', null, '显示全部技能')
-            ),
-            curateSkillWarning
-              ? Alert({ variant: 'warning', 'data-jk-kb-curate-skill-warning': 'true' },
-                  '该技能不在该专家绑定范围内（仍可提交，宿主会告警）')
-              : null,
-            h('label', { className: 'jk-kb-field' }, '标题（可选）'),
-            h('input', {
-              type: 'text',
-              className: 'jk-kb-field-input',
-              'data-jk-kb-curate-title': 'true',
-              value: typeof curateForm.title === 'string' ? curateForm.title : '',
-              onChange: (event) => {
-                if (typeof p.onCurateField === 'function') {
-                  p.onCurateField('title', event && event.target ? event.target.value : '');
-                }
-              },
-            }),
-            h('label', { className: 'jk-kb-field' }, '来源（可选，如「客户访谈 2026-10-17」）'),
-            h('input', {
-              type: 'text',
-              className: 'jk-kb-field-input',
-              'data-jk-kb-curate-source': 'true',
-              value: typeof curateForm.source === 'string' ? curateForm.source : '',
-              onChange: (event) => {
-                if (typeof p.onCurateField === 'function') {
-                  p.onCurateField('source', event && event.target ? event.target.value : '');
-                }
-              },
-            }),
-            h('div', { className: 'jk-kb-curate-actions' },
-              Button({
-                variant: 'default',
-                className: 'jk-kb-guide-cta',
-                'data-jk-kb-curate-submit': 'true',
-                disabled: !curateCanSubmit,
-                onClick: typeof p.onCurateSubmit === 'function' ? p.onCurateSubmit : undefined,
-              }, p.curateBusy === true ? '提交中…' : '开始入柜'),
-              Button({
-                variant: 'outline',
-                'data-jk-kb-curate-cancel': 'true',
-                onClick: typeof p.onCurateClose === 'function' ? p.onCurateClose : undefined,
-              }, '取消')
-            )
-          )
         : null;
 
       const confirmBox = confirming
@@ -6658,7 +6459,6 @@ window.__ModuleLoader__.load({
         ),
         maintainConfirmBox,
         skillFormBox,
-        curateBox,
         confirmBox,
         notice
           ? Alert({
@@ -8460,10 +8260,10 @@ window.__ModuleLoader__.load({
     // ───────────────────────────── 任务管理：列表 / 日历双视图 ─────────────────────────────
     function TasksViewSwitch(props) {
       const p = props || {};
-      const mode = p.viewMode === 'calendar' ? 'calendar' : (p.viewMode === 'skills' ? 'skills' : 'list');
+      const mode = p.viewMode === 'calendar' ? 'calendar' : 'list';
       return h('div', { className: 'jk-kb-view-switch', 'data-jk-kb-view-switch': 'true' },
         TabsList(null,
-          [['list', '列表'], ['calendar', '日历'], ['skills', '技能']].map((entry) => TabsTrigger({
+          [['list', '列表'], ['calendar', '日历']].map((entry) => TabsTrigger({
             key: entry[0],
             active: mode === entry[0],
             'data-jk-kb-view-tab': entry[0],
@@ -8472,10 +8272,12 @@ window.__ModuleLoader__.load({
           }, entry[1]))));
     }
 
-    // ───────────────────────────── 技能视图（所有技能说明，一行一个） ─────────────────────────────
+    // ───────────────────────────── 技能视图（分类导航 + 技能列表，行可展开明细） ─────────────────────────────
     function SkillViewPage() {
       const [state, setState] = React.useState({ phase: 'loading', groups: [], count: 0, error: null });
       const [reload, setReload] = React.useState(0);
+      const [expandedId, setExpandedId] = React.useState('');
+      const [selectedRole, setSelectedRole] = React.useState('');
 
       React.useEffect(function () {
         let alive = true;
@@ -8492,6 +8294,14 @@ window.__ModuleLoader__.load({
 
       return SkillViewView({
         skills: state,
+        expandedId: expandedId,
+        selectedRole: selectedRole,
+        onToggleSkill: (id) => setExpandedId(expandedId === id ? '' : id),
+        onSelectRole: (role) => {
+          // 切分类收起展开明细：旧分类的展开行在新分类下无意义。
+          setExpandedId('');
+          setSelectedRole(String(role || ''));
+        },
         onRetry: () => setReload(reload + 1),
       });
     }
@@ -8503,12 +8313,86 @@ window.__ModuleLoader__.load({
         : { phase: 'loading', groups: [], count: 0, error: null };
       const groups = Array.isArray(skills.groups) ? skills.groups : [];
       const total = typeof skills.count === 'number' ? skills.count : 0;
+      const expandedId = typeof p.expandedId === 'string' ? p.expandedId : '';
+      // 选中分类在数据里不存在（脏状态 / 重载后分类消失）时回落「全部」。
+      const rawRole = typeof p.selectedRole === 'string' ? p.selectedRole : '';
+      const activeRole = rawRole === '' || groups.some((group) => group.key === rawRole) ? rawRole : '';
+      // 右栏分组：全部 → 逐组带标题；具体分类 → 仅该组（标题冗余，不渲染）。
+      const visibleGroups = activeRole === '' ? groups : groups.filter((group) => group.key === activeRole);
+
+      // 单个技能行（点击展开 / 收起明细）。
+      const renderSkillItem = (skill) => {
+        const open = expandedId === skill.id;
+        return h('li', {
+          key: skill.id,
+          className: 'jk-kb-skill-desc-item',
+          'data-jk-kb-skill-desc': skill.id,
+          'data-open': open ? 'true' : 'false',
+        },
+          h('div', {
+            className: 'jk-kb-skill-desc-row',
+            'data-jk-kb-skill-row': skill.id,
+            role: 'button',
+            tabIndex: 0,
+            'aria-expanded': open ? 'true' : 'false',
+            onClick: () => { if (typeof p.onToggleSkill === 'function') p.onToggleSkill(skill.id); },
+            onKeyDown: (e) => {
+              if (e && (e.key === 'Enter' || e.key === ' ') && typeof e.preventDefault === 'function') {
+                e.preventDefault();
+                if (typeof p.onToggleSkill === 'function') p.onToggleSkill(skill.id);
+              }
+            },
+          },
+            h('span', { className: 'jk-kb-skill-desc-name' }, skill.label),
+            h('span', { className: 'jk-kb-skill-desc-purpose' }, skill.purpose || '—'),
+            h('span', { className: 'jk-kb-skill-desc-chevron', 'aria-hidden': 'true' },
+              ChevronDownIcon({ width: 14, height: 14 }))
+          ),
+          open
+            ? h('div', { className: 'jk-kb-skill-desc-detail', 'data-jk-kb-skill-detail': skill.id },
+                h('div', { className: 'jk-kb-skill-desc-detail-grid' },
+                  h('div', { className: 'jk-kb-skill-desc-field' },
+                    h('span', { className: 'jk-kb-skill-desc-field-label' }, '技能 ID'),
+                    h('span', { className: 'jk-kb-skill-desc-field-value' }, skill.id)),
+                  h('div', { className: 'jk-kb-skill-desc-field' },
+                    h('span', { className: 'jk-kb-skill-desc-field-label' }, '岗位'),
+                    h('span', { className: 'jk-kb-skill-desc-field-value' }, skill.profession || skill.role)),
+                  h('div', { className: 'jk-kb-skill-desc-field' },
+                    h('span', { className: 'jk-kb-skill-desc-field-label' }, '阶段'),
+                    h('span', { className: 'jk-kb-skill-desc-field-value' }, skill.stage || '—')),
+                  h('div', { className: 'jk-kb-skill-desc-field' },
+                    h('span', { className: 'jk-kb-skill-desc-field-label' }, '产出目录'),
+                    h('span', { className: 'jk-kb-skill-desc-field-value' }, skill.outputDir || '—')),
+                  h('div', { className: 'jk-kb-skill-desc-field' },
+                    h('span', { className: 'jk-kb-skill-desc-field-label' }, 'ID 前缀'),
+                    h('span', { className: 'jk-kb-skill-desc-field-value' }, skill.idPrefix || '—')),
+                  h('div', { className: 'jk-kb-skill-desc-field' },
+                    h('span', { className: 'jk-kb-skill-desc-field-label' }, '说明'),
+                    h('span', { className: 'jk-kb-skill-desc-field-value' }, skill.purpose || '—'))
+                ))
+            : null);
+      };
+
+      // 分类导航项：全部 + 各岗位，纵向一个一个。
+      const renderRoleItem = (roleKey, label, count) => {
+        const active = activeRole === roleKey;
+        return h('button', {
+          key: roleKey === '' ? 'all' : roleKey,
+          type: 'button',
+          className: 'jk-kb-skill-role-item',
+          'data-jk-kb-skill-role': roleKey === '' ? 'all' : roleKey,
+          'data-active': active ? 'true' : 'false',
+          'aria-pressed': active,
+          onClick: () => { if (typeof p.onSelectRole === 'function') p.onSelectRole(roleKey); },
+        },
+          h('span', { className: 'jk-kb-skill-role-name' }, label),
+          h('span', { className: 'jk-kb-skill-role-count' }, count));
+      };
 
       return h('div', { className: 'jk-kb-skill-view', 'data-jk-kb-skill-view': 'true' },
         h('section', { className: 'jk-kb-skill-registry', 'data-jk-kb-skill-registry': skills.phase },
           h('div', { className: 'jk-kb-reports-head' },
-            h('h3', { className: 'jk-kb-section-title' }, '技能说明'),
-            h('span', { className: 'jk-kb-hint', 'data-jk-kb-skill-count': 'true' }, '共 ' + total + ' 项技能，一行一个')
+            h('h3', { className: 'jk-kb-section-title' }, '技能说明（' + total + '）')
           ),
           skills.phase === 'error'
             ? h('div', { className: 'jk-kb-error', 'data-jk-kb-skill-registry-error': 'true' },
@@ -8531,20 +8415,24 @@ window.__ModuleLoader__.load({
             ? h('p', { className: 'jk-kb-hint', 'data-jk-kb-skill-registry-empty': 'true' }, '暂无技能')
             : null,
           skills.phase === 'ready' && groups.length > 0
-            ? groups.map((group) => h('div', {
-                key: group.key,
-                className: 'jk-kb-skill-desc-group',
-                'data-jk-kb-skill-desc-group': group.key,
-              },
-                h('p', { className: 'jk-kb-skill-desc-group-title' }, group.label),
-                h('ul', { className: 'jk-kb-skill-desc-list' },
-                  group.skills.map((skill) => h('li', {
-                    key: skill.id,
-                    className: 'jk-kb-skill-desc-item',
-                    'data-jk-kb-skill-desc': skill.id,
+            ? h('div', { className: 'jk-kb-skill-layout', 'data-jk-kb-skill-layout': 'true' },
+                // 左栏：分类导航（纵向，全部 + 各岗位，选中品牌蓝）。
+                h('div', { className: 'jk-kb-skill-roles', 'data-jk-kb-skill-roles': 'true', role: 'list' },
+                  renderRoleItem('', '全部', total),
+                  groups.map((group) => renderRoleItem(group.key, group.label, group.skills.length))),
+                // 右栏：当前分类的技能列表（保留行展开明细）。
+                h('div', { className: 'jk-kb-skill-list', 'data-jk-kb-skill-list': 'true' },
+                  visibleGroups.map((group) => h('div', {
+                    key: group.key,
+                    className: 'jk-kb-skill-desc-group',
+                    'data-jk-kb-skill-desc-group': group.key,
                   },
-                    h('span', { className: 'jk-kb-skill-desc-name' }, skill.label),
-                    h('span', { className: 'jk-kb-skill-desc-purpose' }, skill.purpose || '—'))))))
+                    activeRole === ''
+                      ? h('p', { className: 'jk-kb-skill-desc-group-title' }, group.label)
+                      : null,
+                    h('ul', { className: 'jk-kb-skill-desc-list' },
+                      group.skills.map(renderSkillItem)))))
+              )
             : null
         )
       );
@@ -8865,14 +8753,12 @@ window.__ModuleLoader__.load({
         }),
         viewMode === 'calendar'
           ? h(LedgerCalendarPage, { onOpenRun: p.onOpenRun })
-          : (viewMode === 'skills'
-              ? h(SkillViewPage, null)
-              : h(RunsBoardPage, {
-                  onOpenRun: p.onOpenRun,
-                  reloadKey: runsReloadKey,
-                  seedFeed: p.seedFeed,
-                  onFeed: p.onFeed,
-                })),
+          : h(RunsBoardPage, {
+              onOpenRun: p.onOpenRun,
+              reloadKey: runsReloadKey,
+              seedFeed: p.seedFeed,
+              onFeed: p.onFeed,
+            }),
         h(ReportsPanel, {
           onArchived: () => setRunsReloadKey(runsReloadKey + 1),
         })
@@ -8955,7 +8841,11 @@ window.__ModuleLoader__.load({
         month: cursor.month,
         today: toLocalDateString(new Date()),
         phase: calendar.phase,
-        calendar: calendar.data ? presentLedger(calendar.data) : null,
+        // 关键：按当前 mode 转换数据。loading 期间 data 还是上一次的另一视图数据，
+        // 不分流会让年视图拿到无 months 的月数据而崩溃（整页被 React 卸载清空）。
+        calendar: calendar.data
+          ? (mode === 'year' ? presentLedgerYear(calendar.data) : presentLedgerMonth(calendar.data))
+          : null,
         error: calendar.error,
         selectedDate: selectedDate,
         dayPhase: day.phase,
@@ -9061,7 +8951,8 @@ window.__ModuleLoader__.load({
 
       const yearGrid = mode === 'year'
         ? h('div', { className: 'jk-kb-cal-year', 'data-jk-kb-cal-grid': 'year' },
-            calendar.months.map((entry) => h('button', {
+            // 兜底：mode 与数据视图不匹配（如 loading 期跨视图复用旧数据）时降级为空年数据（12 格 0 值）
+            (Array.isArray(calendar.months) ? calendar.months : presentLedgerYear(null).months).map((entry) => h('button', {
               key: 'month-' + entry.month,
               type: 'button',
               className: 'jk-kb-cal-month',
@@ -9386,6 +9277,7 @@ window.__ModuleLoader__.load({
       EXPERTS_ID: EXPERTS_ID,
       FILES_ID: FILES_ID,
       TASKS_ID: TASKS_ID,
+      SKILLS_ID: SKILLS_ID,
       USAGE_ID: USAGE_ID,
       POLL_INTERVAL_MS: POLL_INTERVAL_MS,
       SETTINGS_STYLE: SETTINGS_STYLE,
@@ -9566,9 +9458,7 @@ window.__ModuleLoader__.load({
       presentSkills: presentSkills,
       normalizeSkillsResponse: normalizeSkillsResponse,
       buildCuratePayload: buildCuratePayload,
-      canSubmitCurate: canSubmitCurate,
       startCurateRequest: startCurateRequest,
-      planCurateResult: planCurateResult,
       startMaintainRequest: startMaintainRequest,
       buildReportsQuery: buildReportsQuery,
       fetchReports: fetchReports,
@@ -9684,6 +9574,7 @@ window.__ModuleLoader__.load({
       visibleMenus: visibleMenus,
       MenusNav: MenusNav,
       PanelLeftIcon: PanelLeftIcon,
+      ChevronDownIcon: ChevronDownIcon,
       SidebarHeader: SidebarHeader,
       SidebarContent: SidebarContent,
       SidebarFooter: SidebarFooter,
