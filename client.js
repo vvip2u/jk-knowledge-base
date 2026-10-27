@@ -390,6 +390,11 @@ window.__ModuleLoader__.load({
       'M14.5 9.5a2.12 2.12 0 0 0-3 3',
       'M9.5 14.5a2.12 2.12 0 0 0 3 3',
     ]);
+    // 书本翻开（Obsidian 阅读视图同款意象）：md 阅读模式入口图标。
+    const BookOpenIcon = makeNavIcon([
+      'M12 7v14',
+      'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-5a4 4 0 0 0-4 4 4 4 0 0 0-4-4z',
+    ]);
     const MenuIconTasks = makeNavIcon([
       'M3 17l2 2 4-4',
       'M3 7l2 2 4-4',
@@ -1041,6 +1046,28 @@ window.__ModuleLoader__.load({
 
     function numberOrNull(value) {
       return typeof value === 'number' && isFinite(value) ? value : null;
+    }
+
+    /** round1 —— 保留 1 位小数（SVG 路径坐标用，缩短属性字符串）。 */
+    function round1(value) {
+      return Math.round(value * 10) / 10;
+    }
+
+    /**
+     * normalizeBizTrend —— 经营看板趋势序列归一化：宿主给 [{label,value}]，
+     * 过滤非法点、最多保留 12 个；非数组 / 全非法一律回落空数组（图表显示空态）。
+     */
+    function normalizeBizTrend(raw) {
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .map((point) => (point && typeof point === 'object'
+          ? {
+              label: typeof point.label === 'string' && point.label ? point.label : '',
+              value: numberOrNull(point.value),
+            }
+          : null))
+        .filter((point) => point && point.value !== null)
+        .slice(0, 12);
     }
 
     function tokenTotalText(inputTokens, outputTokens) {
@@ -1955,6 +1982,8 @@ window.__ModuleLoader__.load({
         skillIds: (Array.isArray(expert.skillIds) ? expert.skillIds : []).map(String),
         promptFragment: typeof expert.promptFragment === 'string' ? expert.promptFragment : '',
         status: typeof expert.status === 'string' ? expert.status : '',
+        // 来源标记：builtin=预设（宿主种子/历史数据），custom=用户自建；缺省视为预设。
+        source: expert.source === 'custom' ? 'custom' : 'builtin',
         cardCount: typeof expert.cardCount === 'number' && isFinite(expert.cardCount) ? expert.cardCount : 0,
         lastUsedAtText: formatTimestamp(expert.lastUsedAt),
         skillStates: normalizeExpertSkillStates(expert.skillStates),
@@ -2210,6 +2239,12 @@ window.__ModuleLoader__.load({
       const tools = health.tools && typeof health.tools === 'object' ? health.tools : {};
       const subagents = health.subagents && typeof health.subagents === 'object' ? health.subagents : {};
       const maintain = data.maintain && typeof data.maintain === 'object' ? data.maintain : {};
+      // 经营看板：宿主从 .jk-kb/dashboard-biz.json 读；缺失/字段非法一律 null（视图层显示占位）。
+      const biz = data.biz && typeof data.biz === 'object' ? data.biz : {};
+      const bizStrategy = biz.strategy && typeof biz.strategy === 'object' ? biz.strategy : {};
+      const bizAudience = biz.audience && typeof biz.audience === 'object' ? biz.audience : {};
+      const bizOrders = biz.orders && typeof biz.orders === 'object' ? biz.orders : {};
+      const bizConversion = biz.conversion && typeof biz.conversion === 'object' ? biz.conversion : {};
       const recent = (Array.isArray(data.recent) ? data.recent : []).map(presentDashboardRecent);
       const lastRun = runtime.lastRun && typeof runtime.lastRun === 'object'
         ? {
@@ -2273,6 +2308,27 @@ window.__ModuleLoader__.load({
                 byRule: byRule,
               }
             : null,
+        },
+        biz: {
+          strategy: {
+            milestone: typeof bizStrategy.milestone === 'string' && bizStrategy.milestone ? bizStrategy.milestone : null,
+            progress: numberOrNull(bizStrategy.progress),
+          },
+          audience: {
+            accounts: numberOrNull(bizAudience.accounts),
+            followers: numberOrNull(bizAudience.followers),
+            prospects: numberOrNull(bizAudience.prospects),
+            trend: normalizeBizTrend(bizAudience.trend),
+          },
+          orders: {
+            deals: numberOrNull(bizOrders.deals),
+            amount: numberOrNull(bizOrders.amount),
+            trend: normalizeBizTrend(bizOrders.trend),
+          },
+          conversion: {
+            wechatRate: numberOrNull(bizConversion.wechatRate),
+            dealRate: numberOrNull(bizConversion.dealRate),
+          },
         },
       };
     }
@@ -2356,6 +2412,303 @@ window.__ModuleLoader__.load({
         status: result && result.status,
         error: (result && result.error) || { code: 'host-unreachable', message: '宿主服务未连接' },
       };
+    }
+
+    // ───────────────────────────── 文件编辑（md 阅读 / 编辑模式） ─────────────────────────────
+    const HOST_FILE_SAVE_PATH = '/plugins/jk-knowledge-base/file/save';
+    const HOST_FILE_REVEAL_PATH = '/plugins/jk-knowledge-base/file/reveal';
+    const MD_FILE_EXTS = ['.md', '.markdown'];
+
+    /** 判断预览数据是否为可编辑的 markdown 文本。 */
+    function isMarkdownPreview(file) {
+      return !!file
+        && file.kind === 'text'
+        && MD_FILE_EXTS.indexOf(String(file.ext || '').toLowerCase()) >= 0;
+    }
+
+    /** 保存文本文件：POST /file/save。宿主侧强制路径在 root 内、文本白名单、≤2MB、仅已存在文件。 */
+    function saveFileText(relPath, content) {
+      const rel = typeof relPath === 'string' ? relPath : '';
+      return hostRequest(HOST_FILE_SAVE_PATH, {
+        method: 'POST',
+        body: JSON.stringify({ path: rel, content: typeof content === 'string' ? content : '' }),
+      });
+    }
+
+    /** 在系统文件管理器中打开文件所在目录并高亮该文件：POST /file/reveal（宿主按平台调 open -R 等）。 */
+    function revealFile(relPath) {
+      const rel = String(relPath == null ? '' : relPath);
+      if (!rel) return Promise.resolve({ ok: false, error: { code: 'path-required', message: '缺少文件路径' } });
+      return hostRequest(HOST_FILE_REVEAL_PATH, {
+        method: 'POST',
+        body: JSON.stringify({ path: rel }),
+      });
+    }
+
+    function normalizeFileSaveResponse(result) {
+      if (result && result.ok === true && result.saved === true) {
+        return {
+          ok: true,
+          data: {
+            path: typeof result.path === 'string' ? result.path : '',
+            name: typeof result.name === 'string' ? result.name : '',
+            sizeText: formatFileSize(typeof result.size === 'number' && isFinite(result.size) ? result.size : null),
+            mtimeText: formatTimestamp(result.mtimeMs),
+          },
+        };
+      }
+      return {
+        ok: false,
+        status: result && result.status,
+        error: (result && result.error) || { code: 'host-unreachable', message: '宿主服务未连接' },
+      };
+    }
+
+    /**
+     * markdown 行内解析：`code` / **粗体** / *斜体* / ~~删除线~~ / [文字](链接) → vnode 数组。
+     * 文本全部走 React 文本节点（自动转义，天然防注入）；链接仅放行 http(s)。
+     */
+    function mdInlineTokens(text, opts) {
+      const src = String(text == null ? '' : text);
+      const noEmphasis = opts && opts.noEmphasis === true;
+      const out = [];
+      let buf = '';
+      let i = 0;
+      const flush = () => { if (buf) { out.push(buf); buf = ''; } };
+      while (i < src.length) {
+        const rest = src.slice(i);
+        if (rest.charAt(0) === '`') {
+          const end = src.indexOf('`', i + 1);
+          if (end > i) {
+            flush();
+            out.push(h('code', { key: 'c' + i, className: 'jk-kb-md-code' }, src.slice(i + 1, end)));
+            i = end + 1;
+            continue;
+          }
+        }
+        if (!noEmphasis && rest.indexOf('**') === 0) {
+          const end = src.indexOf('**', i + 2);
+          if (end > i + 1) {
+            flush();
+            out.push(h('strong', { key: 's' + i }, mdInlineTokens(src.slice(i + 2, end), { noEmphasis: true })));
+            i = end + 2;
+            continue;
+          }
+        }
+        if (!noEmphasis && rest.charAt(0) === '*' && rest.charAt(1) !== '*') {
+          const end = src.indexOf('*', i + 1);
+          if (end > i) {
+            flush();
+            out.push(h('em', { key: 'e' + i }, mdInlineTokens(src.slice(i + 1, end), { noEmphasis: true })));
+            i = end + 1;
+            continue;
+          }
+        }
+        if (rest.indexOf('~~') === 0) {
+          const end = src.indexOf('~~', i + 2);
+          if (end > i + 1) {
+            flush();
+            out.push(h('del', { key: 'd' + i }, src.slice(i + 2, end)));
+            i = end + 2;
+            continue;
+          }
+        }
+        if (rest.charAt(0) === '[') {
+          const m = /^\[([^\]]*)\]\(([^)\s]+)\)/.exec(rest);
+          if (m && /^https?:\/\//i.test(m[2])) {
+            flush();
+            out.push(h('a', {
+              key: 'a' + i,
+              className: 'jk-kb-md-link',
+              href: m[2],
+              target: '_blank',
+              rel: 'noreferrer noopener',
+            }, m[1] || m[2]));
+            i += m[0].length;
+            continue;
+          }
+        }
+        buf += src.charAt(i);
+        i += 1;
+      }
+      flush();
+      return out;
+    }
+
+    const MD_HEADING_RE = /^(#{1,6})\s+(.*)$/;
+    const MD_LIST_ITEM_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+    const MD_TASK_ITEM_RE = /^\[([ xX])\]\s+(.*)$/;
+    const MD_HR_RE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
+    const MD_TABLE_SEP_RE = /^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/;
+
+    /** 表格行拆列：| a | b | → ['a','b']（容忍首尾竖线）。 */
+    function mdSplitTableRow(line) {
+      let row = String(line == null ? '' : line).trim();
+      if (row.charAt(0) === '|') row = row.slice(1);
+      if (row.charAt(row.length - 1) === '|') row = row.slice(0, -1);
+      return row.split('|').map((cell) => cell.trim());
+    }
+
+    /**
+     * markdown 块级渲染（阅读模式，排版对齐 Obsidian）：
+     * 标题 / 段落（段内换行保 <br>）/ 代码块 / 引用（递归）/ 有序无序任务列表（缩进嵌套）/ 表格 / 分割线。
+     * 输出 vnode 数组；所有字面文本经 React 转义，不做任何 raw HTML 注入。
+     */
+    function renderMarkdown(source) {
+      const lines = String(source == null ? '' : source).replace(/\r\n?/g, '\n').split('\n');
+      const blocks = [];
+      let i = 0;
+      let key = 0;
+      const nextKey = () => 'md' + (key++);
+
+      while (i < lines.length) {
+        const line = lines[i];
+
+        // 代码块：```lang … ```
+        const fence = /^```(\S*)\s*$/.exec(line.trim());
+        if (fence) {
+          const lang = fence[1] || '';
+          const body = [];
+          i += 1;
+          while (i < lines.length && lines[i].trim().indexOf('```') !== 0) {
+            body.push(lines[i]);
+            i += 1;
+          }
+          i += 1; // 跳过收尾 ```（容忍缺失）
+          blocks.push(h('pre', { key: nextKey(), className: 'jk-kb-md-pre', 'data-jk-kb-md-pre': lang || undefined },
+            h('code', null, body.join('\n'))));
+          continue;
+        }
+
+        // 标题
+        const heading = MD_HEADING_RE.exec(line);
+        if (heading) {
+          const level = heading[1].length;
+          blocks.push(h('h' + level, { key: nextKey(), className: 'jk-kb-md-h' + level }, mdInlineTokens(heading[2])));
+          i += 1;
+          continue;
+        }
+
+        // 分割线
+        if (MD_HR_RE.test(line)) {
+          blocks.push(h('hr', { key: nextKey(), className: 'jk-kb-md-hr' }));
+          i += 1;
+          continue;
+        }
+
+        // 引用块：连续 > 行合并后递归渲染
+        if (/^\s*>/.test(line)) {
+          const quoted = [];
+          while (i < lines.length && /^\s*>/.test(lines[i])) {
+            quoted.push(lines[i].replace(/^\s*>\s?/, ''));
+            i += 1;
+          }
+          blocks.push(h('blockquote', { key: nextKey(), className: 'jk-kb-md-quote' }, renderMarkdown(quoted.join('\n'))));
+          continue;
+        }
+
+        // 列表块（含任务列表与缩进嵌套）；空行即终止（空行后的列表是新块，有序/无序不混）。
+        if (MD_LIST_ITEM_RE.test(line)) {
+          const items = [];
+          while (i < lines.length) {
+            const m = MD_LIST_ITEM_RE.exec(lines[i]);
+            if (!m) {
+              // 缩进续行归入上一项文本；空行 / 普通行终止本列表块
+              if (lines[i].trim() !== '' && /^\s+\S/.test(lines[i])) {
+                if (items.length > 0) items[items.length - 1].text += '\n' + lines[i].replace(/^\s+/, '');
+                i += 1;
+                continue;
+              }
+              break;
+            }
+            items.push({ indent: Math.floor(m[1].replace(/\t/g, '  ').length / 2), ordered: /\d/.test(m[2].charAt(0)), text: m[3] });
+            i += 1;
+          }
+          blocks.push(mdRenderList(items, 0, nextKey()));
+          continue;
+        }
+
+        // 表格：当前行 + 下一行分隔线
+        if (line.indexOf('|') >= 0 && i + 1 < lines.length && MD_TABLE_SEP_RE.test(lines[i + 1])) {
+          const head = mdSplitTableRow(lines[i]);
+          i += 2;
+          const rows = [];
+          while (i < lines.length && lines[i].indexOf('|') >= 0 && lines[i].trim() !== '') {
+            rows.push(mdSplitTableRow(lines[i]));
+            i += 1;
+          }
+          blocks.push(h('table', { key: nextKey(), className: 'jk-kb-md-table' },
+            h('thead', null, h('tr', { className: 'jk-kb-md-tr' },
+              head.map((cell, ci) => h('th', { key: 'th' + ci, className: 'jk-kb-md-th' }, mdInlineTokens(cell))))),
+            h('tbody', null, rows.map((row, ri) => h('tr', { key: 'tr' + ri, className: 'jk-kb-md-tr' },
+              row.map((cell, ci) => h('td', { key: 'td' + ci, className: 'jk-kb-md-td' }, mdInlineTokens(cell))))))
+          ));
+          continue;
+        }
+
+        // 空行
+        if (line.trim() === '') { i += 1; continue; }
+
+        // 段落：连续普通行，段内换行渲染为 <br>（Obsidian 行为）
+        const para = [];
+        while (i < lines.length
+          && lines[i].trim() !== ''
+          && !MD_HEADING_RE.test(lines[i])
+          && !MD_LIST_ITEM_RE.test(lines[i])
+          && !/^\s*>/.test(lines[i])
+          && !/^```/.test(lines[i].trim())
+          && !MD_HR_RE.test(lines[i])) {
+          para.push(lines[i]);
+          i += 1;
+        }
+        const paraChildren = [];
+        para.forEach((text, idx) => {
+          if (idx > 0) paraChildren.push(h('br', { key: 'br' + idx }));
+          paraChildren.push.apply(paraChildren, mdInlineTokens(text));
+        });
+        blocks.push(h('p', { key: nextKey(), className: 'jk-kb-md-p' }, paraChildren));
+      }
+      return blocks;
+    }
+
+    /** 列表渲染：items（已按出现顺序、带 indent）按缩进分层组装；任务项渲染只读复选框。 */
+    function mdRenderList(items, start, parentKey) {
+      const listKey = parentKey;
+      if (items.length === 0) return null;
+      const topIndent = items[0].indent;
+      const ordered = items[0].ordered;
+      const children = [];
+      let idx = 0;
+      while (idx < items.length) {
+        const item = items[idx];
+        if (item.indent < topIndent) break;
+        // 收集该项的子列表（缩进更深的一段连续项）
+        const sub = [];
+        let j = idx + 1;
+        while (j < items.length && items[j].indent > topIndent) {
+          sub.push(items[j]);
+          j += 1;
+        }
+        const task = MD_TASK_ITEM_RE.exec(item.text);
+        const liChildren = [];
+        if (task) {
+          liChildren.push(h('input', {
+            key: 'ck',
+            type: 'checkbox',
+            className: 'jk-kb-md-task',
+            checked: task[1].toLowerCase() === 'x',
+            readOnly: true,
+          }));
+          liChildren.push(' ');
+          liChildren.push.apply(liChildren, mdInlineTokens(task[2]));
+        } else {
+          liChildren.push.apply(liChildren, mdInlineTokens(item.text));
+        }
+        if (sub.length > 0) liChildren.push(mdRenderList(sub, 0, listKey + '-sub' + idx));
+        children.push(h('li', { key: 'li' + idx, className: 'jk-kb-md-li' + (task ? ' jk-kb-md-li-task' : '') }, liChildren));
+        idx = j;
+      }
+      return h(ordered ? 'ol' : 'ul', { key: listKey, className: 'jk-kb-md-list jk-kb-md-' + (ordered ? 'ol' : 'ul') }, children);
     }
 
     // ───────────────────────────── doctor（体检 / 修复） ─────────────────────────────
@@ -2616,10 +2969,11 @@ window.__ModuleLoader__.load({
     }
 
     // degraded 可能是字符串、对象 {reason|message|code} 或布尔；空值不显示徽标。
-    // host/orchestrator.js 只写降级码（'no-route' / 'no-agent'），中文解释在渲染层补。
+    // host/orchestrator.js 只写降级码（'no-route' / 'no-agent' / 'agent-empty'），中文解释在渲染层补。
     const DEGRADED_REASONS = {
       'no-route': '没有可用的 agent 路由，已降级为规则引擎执行',
       'no-agent': '未检测到可用的 agent，已降级为规则引擎执行',
+      'agent-empty': '编排官未执行任何步骤，已降级为规则引擎执行',
     };
 
     function describeDegraded(degraded) {
@@ -2818,6 +3172,12 @@ window.__ModuleLoader__.load({
         busy: false,
         confirm: '',
       };
+    }
+
+    // notice 自动消失时长：ok 类 4 秒、error 类 8 秒；无效 notice 不注册定时器。
+    function noticeAutoDismissDelay(notice) {
+      if (!notice || typeof notice !== 'object' || !notice.kind) return 0;
+      return notice.kind === 'error' ? 8000 : 4000;
     }
 
     // 失败即清空列表：宁可不显示，也不拿旧数据假装正常。
@@ -3255,6 +3615,9 @@ window.__ModuleLoader__.load({
       + '--border:var(--dsw-alias-border-l1);'
       + '--input:var(--dsw-alias-border-l2);'
       + '--ring:var(--dsw-alias-brand-primary);'
+      // 统计卡橙色：宿主未定义警示色令牌（fallback 会落到红），且无黄色基色可混，
+      // 橙色用固定 hsl 表达（门禁仅禁 #hex 与 rgb()/rgba()）；浅底仍 color-mix 随主题换底。
+      + '--stat-orange:hsl(27 92% 52%);'
       + '--radius:0.5rem;}';
 
     // ───── shadcn/ui 组件层样式：变体类晚于既有规则注入，同优先级时覆盖旧观感 ─────
@@ -3440,7 +3803,7 @@ window.__ModuleLoader__.load({
       '.jk-kb-stat-head{display:flex;align-items:center;gap:6px;}',
       '.jk-kb-truncated{font-size:10px;font-weight:600;color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-label-secondary));border:1px solid var(--dsw-alias-state-warning-primary,var(--dsw-alias-border-l2));border-radius:999px;padding:0 6px;white-space:nowrap;}',
       '.jk-kb-recent-item{align-items:center;}',
-      '.jk-kb-recent-copy{flex:none;}',
+      '.jk-kb-recent-open{flex:none;}',
       '.jk-kb-maintain{display:flex;flex-direction:column;gap:4px;}',
       '.jk-kb-maintain-period{margin:0;font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary);}',
       '.jk-kb-maintain-summary{margin:0;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);}',
@@ -3504,8 +3867,38 @@ window.__ModuleLoader__.load({
       '.jk-kb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}',
       '.jk-kb-stat{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;}',
       '.jk-kb-stat-label{font-size:11px;color:var(--dsw-alias-label-tertiary);}',
+      // 统计卡四色：条目红 / 本周橙 / 今日绿 / 技能蓝。竖线 3px 同主色；
+      // 卡片底为对应色的浅色（color-mix 与卡片底色混合，自动适配明暗主题），
+      // 边框为 1px 细线、颜色与竖线一致。橙色 = 警示黄混红（--stat-orange）；
+      // 蓝色 = 侧边栏选中同款 info 蓝（非品牌主色）。颜色全部走令牌，无 hex / rgb()。
+      '.jk-kb-stat .jk-kb-stat-label::before{content:"";display:inline-block;width:3px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;background:var(--destructive);}',
+      '.jk-kb-stat[data-jk-kb-stat="weekly"] .jk-kb-stat-label::before{background:var(--stat-orange);}',
+      '.jk-kb-stat[data-jk-kb-stat="today"] .jk-kb-stat-label::before{background:var(--success);}',
+      '.jk-kb-stat[data-jk-kb-stat="skills"] .jk-kb-stat-label::before{background:var(--dsw-alias-button-info-fill);}',
+      '.jk-kb-stat[data-jk-kb-stat="entries"]{background:color-mix(in srgb,var(--destructive) 8%,var(--card));border-color:var(--destructive);}',
+      '.jk-kb-stat[data-jk-kb-stat="weekly"]{background:color-mix(in srgb,var(--stat-orange) 10%,var(--card));border-color:var(--stat-orange);}',
+      '.jk-kb-stat[data-jk-kb-stat="today"]{background:color-mix(in srgb,var(--success) 8%,var(--card));border-color:var(--success);}',
+      '.jk-kb-stat[data-jk-kb-stat="skills"]{background:color-mix(in srgb,var(--dsw-alias-button-info-fill) 8%,var(--card));border-color:var(--dsw-alias-button-info-fill);}',
+      // 经营看板第二行：四卡先用默认配色（主色竖线 + 默认卡底 + 默认边框），
+      // 区别于第一行的红 / 橙 / 绿 / 蓝定制。
+      '.jk-kb-stat[data-jk-kb-stat^="biz-"] .jk-kb-stat-label::before{background:var(--primary);}',
       '.jk-kb-stat-value{font-size:20px;font-weight:600;line-height:1.2;color:var(--dsw-alias-label-primary);}',
       '.jk-kb-stat-hint{font-size:11px;color:var(--dsw-alias-label-tertiary);}',
+      // shadcn Progress 移植：灰色轨道（未完成）+ 主色 indicator，宽度走内联 style。
+      '.jk-kb-progress{position:relative;height:8px;width:100%;overflow:hidden;border-radius:9999px;background:color-mix(in srgb,var(--foreground) 8%,var(--card));}',
+      '.jk-kb-progress .jk-kb-progress-indicator{height:100%;border-radius:inherit;background:var(--primary);}',
+      '.jk-kb-stat-progress{margin-top:6px;}',
+      // 经营看板图表（shadcn Chart 风格的零依赖 SVG）：主色曲线描边 + 淡填充、
+      // 主色圆角柱、令牌虚线网格；svg 拉伸铺满卡片宽，高度与 viewBox 一致。
+      '.jk-kb-chart{margin-top:6px;min-width:0;}',
+      '.jk-kb-chart-svg{display:block;width:100%;height:56px;}',
+      '.jk-kb-chart-grid{stroke:var(--border);stroke-width:1;stroke-dasharray:3 3;}',
+      '.jk-kb-chart-area{fill:var(--primary);fill-opacity:.12;}',
+      '.jk-kb-chart-line{fill:none;stroke:var(--primary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}',
+      '.jk-kb-chart-dot{fill:var(--card);stroke:var(--primary);stroke-width:1.5;}',
+      '.jk-kb-chart-bar{fill:var(--primary);}',
+      '.jk-kb-chart-axis{fill:var(--dsw-alias-label-tertiary);font-size:9px;text-anchor:middle;}',
+      '.jk-kb-chart-empty{height:56px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dsw-alias-label-tertiary);border:1px dashed var(--dsw-alias-border-l2);border-radius:8px;}',
       '.jk-kb-dash-columns{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;}',
       '.jk-kb-block{flex:1 1 240px;min-width:0;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;}',
       '.jk-kb-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}',
@@ -3764,6 +4157,7 @@ window.__ModuleLoader__.load({
       '.jk-kb-expert-responsibility{margin:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}',
       '.jk-kb-expert-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-tertiary);border-top:1px solid var(--dsw-alias-border-l1);padding-top:8px;}',
       '.jk-kb-expert-meta-divider{flex:none;width:1px;height:12px;background:var(--dsw-alias-border-l2);}',
+      '.jk-kb-badge.jk-kb-expert-source{padding:1px 6px;font-size:10px;border-radius:4px;}',
       '.jk-kb-expert-signal{position:relative;display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);cursor:help;padding:2px;border-radius:4px;}',
       '.jk-kb-expert-signal:hover,.jk-kb-expert-signal:focus-visible{color:var(--dsw-alias-label-primary);}',
       '.jk-kb-expert-signal:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px;}',
@@ -3849,6 +4243,44 @@ window.__ModuleLoader__.load({
       '.jk-kb-file-preview-meta{margin:0;font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all;}',
       '.jk-kb-file-preview-text{flex:1;margin:0;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;padding:10px 12px;max-height:60vh;overflow:auto;}',
       '.jk-kb-file-preview-image{max-width:100%;max-height:60vh;object-fit:contain;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);}',
+      // md 阅读模式（Obsidian 式排版）：正文可滚动，行高 1.7、段距分层；
+      // 配色层次——标题/引用/列表符/表头/链接用主色，行内 code 用警示红，
+      // 任务勾选后变成功色并划线置灰，分割线为居中主色渐变。
+      '.jk-kb-file-preview-toolbar{display:flex;align-items:center;gap:8px;}',
+      '.jk-kb-file-preview-toolbar .jk-kb-nav-menu-icon{width:14px;height:14px;}',
+      '.jk-kb-md{flex:1;min-height:0;max-height:60vh;overflow:auto;padding:2px 4px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.7;word-break:break-word;}',
+      '.jk-kb-md>*:first-child{margin-top:0;}',
+      '.jk-kb-md>*:last-child{margin-bottom:0;}',
+      '.jk-kb-md-p{margin:0 0 10px;}',
+      '.jk-kb-md-h1,.jk-kb-md-h2,.jk-kb-md-h3,.jk-kb-md-h4,.jk-kb-md-h5,.jk-kb-md-h6{margin:18px 0 8px;font-weight:600;line-height:1.35;}',
+      '.jk-kb-md-h1{font-size:20px;color:var(--primary);padding-bottom:6px;border-bottom:2px solid var(--primary);}',
+      '.jk-kb-md-h2{font-size:17px;color:var(--primary);padding-bottom:4px;border-bottom:1px solid var(--dsw-alias-border-l2);}',
+      '.jk-kb-md-h3{font-size:15px;}',
+      '.jk-kb-md-h4,.jk-kb-md-h5,.jk-kb-md-h6{font-size:13px;color:var(--dsw-alias-label-secondary);}',
+      '.jk-kb-md-quote{margin:0 0 10px;padding:6px 12px;border-left:3px solid var(--primary);border-radius:0 6px 6px 0;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);}',
+      '.jk-kb-md-quote>*:last-child{margin-bottom:0;}',
+      '.jk-kb-md-pre{margin:0 0 10px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre;}',
+      '.jk-kb-md-pre[data-jk-kb-md-pre]::before{content:attr(data-jk-kb-md-pre);display:block;text-align:right;font-size:10px;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);margin:-2px 0 6px;}',
+      '.jk-kb-md-code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--destructive);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;}',
+      '.jk-kb-md-pre .jk-kb-md-code{padding:0;background:none;}',
+      '.jk-kb-md-list{margin:0 0 10px;padding-left:22px;}',
+      '.jk-kb-md-list .jk-kb-md-list{margin:2px 0;}',
+      '.jk-kb-md-li{margin:2px 0;}',
+      '.jk-kb-md-li::marker{color:var(--primary);}',
+      '.jk-kb-md-li-task{list-style:none;margin-left:-18px;}',
+      '.jk-kb-md-task{margin-right:4px;vertical-align:middle;accent-color:var(--primary);}',
+      '.jk-kb-md-task:checked{accent-color:var(--success);}',
+      '.jk-kb-md-li:has(.jk-kb-md-task:checked){color:var(--dsw-alias-label-tertiary);text-decoration:line-through;}',
+      '.jk-kb-md-table{margin:0 0 10px;border-collapse:collapse;width:100%;font-size:12px;}',
+      '.jk-kb-md-th,.jk-kb-md-td{border:1px solid var(--dsw-alias-border-l1);padding:5px 10px;text-align:left;vertical-align:top;}',
+      '.jk-kb-md-th{background:var(--dsw-alias-interactive-bg-hover);color:var(--primary);font-weight:600;}',
+      '.jk-kb-md-hr{margin:14px 0;border:none;height:1px;background:linear-gradient(90deg,var(--dsw-alias-border-l1),var(--primary),var(--dsw-alias-border-l1));}',
+      '.jk-kb-md-link{color:var(--primary);text-decoration:none;}',
+      '.jk-kb-md-link:hover{text-decoration:underline;}',
+      '.jk-kb-md del{color:var(--dsw-alias-label-tertiary);}',
+      // md 编辑模式：等宽源码 textarea，与阅读区同高。
+      '.jk-kb-md-editor{flex:1;min-height:0;resize:vertical;box-sizing:border-box;width:100%;height:60vh;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.7;padding:10px 12px;outline:none;white-space:pre-wrap;word-break:break-word;}',
+      '.jk-kb-md-editor:focus{border-color:var(--primary);}',
     ].join('') + TOKEN_CSS + COMPONENT_CSS;
 
     // ───────────────────────────── shadcn/ui 规范组件层 ─────────────────────────────
@@ -3910,6 +4342,207 @@ window.__ModuleLoader__.load({
         attrs[key] = rest[key];
       });
       return h.apply(null, ['span', attrs].concat(Array.prototype.slice.call(arguments, 1)));
+    }
+
+    /**
+     * Progress —— shadcn/ui Progress 的零依赖移植：灰色轨道（未完成部分）+
+     * 主色 indicator；value 非法按 0、超界夹到 0~100（与 shadcn 同款约定）。
+     */
+    function Progress(props) {
+      const rest = props && typeof props === 'object' ? props : {};
+      const raw = numberOrNull(rest.value);
+      const value = raw === null ? 0 : Math.max(0, Math.min(100, raw));
+      const attrs = {
+        className: cn('jk-kb-progress', rest.className),
+        role: 'progressbar',
+        'aria-valuemin': 0,
+        'aria-valuemax': 100,
+        'aria-valuenow': value,
+      };
+      Object.keys(rest).forEach(function (key) {
+        if (key === 'value' || key === 'className') return;
+        attrs[key] = rest[key];
+      });
+      return h('div', attrs,
+        h('div', { className: 'jk-kb-progress-indicator', style: { width: value + '%' } }));
+    }
+
+    // ───────────────── 经营看板图表（shadcn/ui Chart 风格的零依赖 SVG 移植） ─────────────────
+    // viewBox 固定 160×56：绘图区高 44（含 4px 内边距），底部 12px 留给稀疏 x 轴标签。
+    // 颜色全部走 CSS 类 + 令牌（主色曲线 / 主色柱 / 令牌网格线），无 hex / rgb()。
+    const CHART_VIEW_WIDTH = 160;
+    const CHART_VIEW_HEIGHT = 56;
+    const CHART_PLOT_HEIGHT = 44;
+    const CHART_PADDING = 4;
+    const CHART_AXIS_MAX_LABELS = 4;
+
+    /**
+     * buildChartGeometry —— 曲线/柱状共用的坐标几何：把 value 序列映射进
+     * [0,width]×[0,height]（含 padding）；y 轴按 min~max 自适应（极值相等时上下
+     * 各扩 10% 防退化成贴边直线）。空序列返回 null。
+     */
+    function buildChartGeometry(values, width, height, padding) {
+      const pad = typeof padding === 'number' && padding >= 0 ? padding : 0;
+      const nums = (Array.isArray(values) ? values : [])
+        .map((value) => (typeof value === 'number' && isFinite(value) ? value : null))
+        .filter((value) => value !== null);
+      if (nums.length === 0) return null;
+      let min = Math.min.apply(null, nums);
+      let max = Math.max.apply(null, nums);
+      if (min === max) {
+        const wobble = Math.abs(min) * 0.1 || 1;
+        min -= wobble;
+        max += wobble;
+      }
+      const range = max - min;
+      const usableW = width - pad * 2;
+      const usableH = height - pad * 2;
+      const step = nums.length > 1 ? usableW / (nums.length - 1) : 0;
+      return {
+        min: min,
+        max: max,
+        points: nums.map(function (value, index) {
+          return {
+            x: round1(pad + (nums.length === 1 ? usableW / 2 : step * index)),
+            y: round1(pad + usableH - ((value - min) / range) * usableH),
+          };
+        }),
+      };
+    }
+
+    /**
+     * smoothLinePath —— Catmull-Rom 转三次贝塞尔，把折线点串成平滑曲线
+     * （shadcn Chart type="monotone" 的观感）；单点退化为 M 命令。
+     */
+    function smoothLinePath(points) {
+      const pts = Array.isArray(points) ? points : [];
+      if (pts.length === 0) return '';
+      if (pts.length === 1) return 'M' + round1(pts[0].x) + ' ' + round1(pts[0].y);
+      let d = 'M' + round1(pts[0].x) + ' ' + round1(pts[0].y);
+      for (let i = 0; i < pts.length - 1; i += 1) {
+        const p0 = pts[i - 1] || pts[i];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[i + 2] || pts[i + 1];
+        const c1x = round1(p1.x + (p2.x - p0.x) / 6);
+        const c1y = round1(p1.y + (p2.y - p0.y) / 6);
+        const c2x = round1(p2.x - (p3.x - p1.x) / 6);
+        const c2y = round1(p2.y - (p3.y - p1.y) / 6);
+        d += 'C' + c1x + ' ' + c1y + ' ' + c2x + ' ' + c2y + ' ' + round1(p2.x) + ' ' + round1(p2.y);
+      }
+      return d;
+    }
+
+    /**
+     * pickAxisLabels —— x 轴标签稀疏化：只保留有 label 的点，数量超限时均匀取
+     * 最多 maxLabels 个（含首尾），避免 150px 宽的小卡内文字挤压。
+     * 返回 [{label, index}]（index 用于对齐点位 x 坐标）。
+     */
+    function pickAxisLabels(points, maxLabels) {
+      const slots = (Array.isArray(points) ? points : [])
+        .map(function (point, index) {
+          const label = point && typeof point.label === 'string' ? point.label : '';
+          return { label: label, index: index };
+        })
+        .filter(function (slot) { return slot.label; });
+      if (slots.length === 0) return [];
+      const limit = Math.max(1, Math.min(maxLabels || CHART_AXIS_MAX_LABELS, slots.length));
+      if (slots.length <= limit) return slots;
+      const picked = [];
+      for (let i = 0; i < limit; i += 1) {
+        const slot = slots[Math.round((i * (slots.length - 1)) / (limit - 1))];
+        if (picked.indexOf(slot) < 0) picked.push(slot);
+      }
+      return picked;
+    }
+
+    /** chartGridLines —— 绘图区三等分的两条横向虚线（y 坐标）。 */
+    function chartGridLines() {
+      const usableH = CHART_PLOT_HEIGHT - CHART_PADDING * 2;
+      return [
+        round1(CHART_PADDING + usableH / 3),
+        round1(CHART_PADDING + (usableH * 2) / 3),
+      ];
+    }
+
+    /** chartEmptyNode —— 图表空态：虚线框 + 占位文案（其余 props 透传）。 */
+    function chartEmptyNode(rest, passthrough) {
+      return h('div',
+        Object.assign({ className: cn('jk-kb-chart', 'jk-kb-chart-empty', rest.className), 'data-jk-kb-chart-empty': 'true' }, passthrough),
+        '暂无趋势数据');
+    }
+
+    /** chartAxisNodes —— 稀疏 x 轴标签（svg text，挂到对应点位上方）。 */
+    function chartAxisNodes(points, geo) {
+      return pickAxisLabels(points, CHART_AXIS_MAX_LABELS).map(function (slot) {
+        const anchor = geo.points[slot.index] || geo.points[0];
+        return h('text', { className: 'jk-kb-chart-axis', x: anchor ? anchor.x : 0, y: CHART_VIEW_HEIGHT - 3 }, slot.label);
+      });
+    }
+
+    /**
+     * TrendLineChart —— shadcn/ui Chart 风格曲线图：主色平滑曲线 + 淡填充 +
+     * 虚线网格 + 数据点圆心 + 稀疏 x 轴标签；点数不足 2 个显示空态。
+     */
+    function TrendLineChart(props) {
+      const rest = props && typeof props === 'object' ? props : {};
+      const points = Array.isArray(rest.points) ? rest.points : [];
+      const passthrough = {};
+      Object.keys(rest).forEach(function (key) {
+        if (key === 'points' || key === 'className') return;
+        passthrough[key] = rest[key];
+      });
+      if (points.length < 2) return chartEmptyNode(rest, passthrough);
+      const geo = buildChartGeometry(points.map(function (point) { return point && point.value; }), CHART_VIEW_WIDTH, CHART_PLOT_HEIGHT, CHART_PADDING);
+      const linePath = smoothLinePath(geo.points);
+      const baseline = round1(CHART_PLOT_HEIGHT - CHART_PADDING);
+      const first = geo.points[0];
+      const last = geo.points[geo.points.length - 1];
+      const areaPath = linePath + ' L' + round1(last.x) + ' ' + baseline + ' L' + round1(first.x) + ' ' + baseline + ' Z';
+      const grids = chartGridLines();
+      return h('div', Object.assign({ className: cn('jk-kb-chart', rest.className), 'data-jk-kb-chart': 'line' }, passthrough),
+        h('svg', { className: 'jk-kb-chart-svg', viewBox: '0 0 ' + CHART_VIEW_WIDTH + ' ' + CHART_VIEW_HEIGHT, preserveAspectRatio: 'none', role: 'img' },
+          h('line', { className: 'jk-kb-chart-grid', x1: 0, x2: CHART_VIEW_WIDTH, y1: grids[0], y2: grids[0] }),
+          h('line', { className: 'jk-kb-chart-grid', x1: 0, x2: CHART_VIEW_WIDTH, y1: grids[1], y2: grids[1] }),
+          h('path', { className: 'jk-kb-chart-area', d: areaPath }),
+          h('path', { className: 'jk-kb-chart-line', d: linePath }),
+          geo.points.map(function (point) {
+            return h('circle', { className: 'jk-kb-chart-dot', cx: point.x, cy: point.y, r: 2 });
+          }),
+          chartAxisNodes(points, geo)
+        )
+      );
+    }
+
+    /**
+     * TrendBarChart —— shadcn/ui Chart 风格柱状图：主色圆角柱 + 虚线网格 +
+     * 稀疏 x 轴标签；柱高按值比例、柱宽按点数均分（留 30% 间隙）；空序列显示空态。
+     */
+    function TrendBarChart(props) {
+      const rest = props && typeof props === 'object' ? props : {};
+      const points = Array.isArray(rest.points) ? rest.points : [];
+      const passthrough = {};
+      Object.keys(rest).forEach(function (key) {
+        if (key === 'points' || key === 'className') return;
+        passthrough[key] = rest[key];
+      });
+      if (points.length === 0) return chartEmptyNode(rest, passthrough);
+      const geo = buildChartGeometry(points.map(function (point) { return point && point.value; }), CHART_VIEW_WIDTH, CHART_PLOT_HEIGHT, CHART_PADDING);
+      const baseline = round1(CHART_PLOT_HEIGHT - CHART_PADDING);
+      const usableW = CHART_VIEW_WIDTH - CHART_PADDING * 2;
+      const barWidth = Math.max(4, round1((usableW / points.length) * 0.7));
+      const grids = chartGridLines();
+      return h('div', Object.assign({ className: cn('jk-kb-chart', rest.className), 'data-jk-kb-chart': 'bar' }, passthrough),
+        h('svg', { className: 'jk-kb-chart-svg', viewBox: '0 0 ' + CHART_VIEW_WIDTH + ' ' + CHART_VIEW_HEIGHT, preserveAspectRatio: 'none', role: 'img' },
+          h('line', { className: 'jk-kb-chart-grid', x1: 0, x2: CHART_VIEW_WIDTH, y1: grids[0], y2: grids[0] }),
+          h('line', { className: 'jk-kb-chart-grid', x1: 0, x2: CHART_VIEW_WIDTH, y1: grids[1], y2: grids[1] }),
+          geo.points.map(function (point) {
+            const height = Math.max(1, round1(baseline - point.y));
+            return h('rect', { className: 'jk-kb-chart-bar', x: round1(point.x - barWidth / 2), y: round1(baseline - height), width: barWidth, height: height, rx: 2 });
+          }),
+          chartAxisNodes(points, geo)
+        )
+      );
     }
 
     /**
@@ -4696,6 +5329,17 @@ window.__ModuleLoader__.load({
             h('span', { className: 'jk-kb-skel-bar jk-kb-skel-bar-lg' })
           ))
         ),
+        // 经营看板骨架：与第二行四卡对齐，避免加载完成后的布局跳变。
+        h('div', { className: 'jk-kb-stats' },
+          ['biz-strategy', 'biz-audience', 'biz-orders', 'biz-conversion'].map((id) => h('div', {
+            key: id,
+            className: 'jk-kb-stat jk-kb-skel-card',
+            'data-jk-kb-skeleton-card': id,
+          },
+            h('span', { className: 'jk-kb-skel-bar jk-kb-skel-bar-sm' }),
+            h('span', { className: 'jk-kb-skel-bar jk-kb-skel-bar-lg' })
+          ))
+        ),
         h('div', { className: 'jk-kb-dash-columns' },
           h('section', { className: 'jk-kb-block' },
             h('h2', { className: 'jk-kb-section-title' }, '最近入库'),
@@ -5109,6 +5753,59 @@ window.__ModuleLoader__.load({
         ))
       );
 
+      // 经营看板（第二行统计卡，默认配色）：战略布局（Progress + 里程碑）/
+      // 客资数据（粉丝趋势曲线图）/ 订单数据（订单金额柱状图）/ 转化数据（占位值 + 双转化率）。
+      // 数据由用户在 vault 的 .jk-kb/dashboard-biz.json 维护，宿主原样读出；缺数据显示占位。
+      const biz = data.biz || {};
+      const bizNumOrDash = (value, suffix) => (value === null ? '—' : formatTokenCount(value) + (suffix || ''));
+      const bizStats = h('div', { className: 'jk-kb-stats', 'data-jk-kb-biz-stats': 'true' },
+        // 战略布局：Progress 主色填充已完成、灰色轨道为未完成，下方文字为里程碑名。
+        Card({
+          key: 'biz-strategy',
+          className: 'jk-kb-stat',
+          'data-jk-kb-stat': 'biz-strategy',
+        },
+          CardHeader(null, CardDescription({ className: 'jk-kb-stat-label' }, '战略布局')),
+          biz.strategy.progress === null ? null : h('span', { className: 'jk-kb-stat-value' }, biz.strategy.progress + '%'),
+          Progress({ className: 'jk-kb-stat-progress', value: biz.strategy.progress, 'data-jk-kb-progress': 'strategy' }),
+          h('span', { className: 'jk-kb-stat-hint' }, '里程碑：' + (biz.strategy.milestone || '—'))
+        ),
+        // 客资数据：粉丝趋势曲线图（shadcn Chart 风格），底部摘要账号 / 粉丝 / 潜在客户。
+        Card({
+          key: 'biz-audience',
+          className: 'jk-kb-stat',
+          'data-jk-kb-stat': 'biz-audience',
+        },
+          CardHeader(null, CardDescription({ className: 'jk-kb-stat-label' }, '客资数据')),
+          TrendLineChart({ points: biz.audience.trend, 'data-jk-kb-chart-card': 'biz-audience' }),
+          h('span', { className: 'jk-kb-stat-hint' },
+            bizNumOrDash(biz.audience.accounts, ' 个账号') + ' · 粉丝 ' + bizNumOrDash(biz.audience.followers)
+            + ' · 潜在接洽客户 ' + bizNumOrDash(biz.audience.prospects))
+        ),
+        // 订单数据：订单金额柱状图，底部摘要成交单数与金额。
+        Card({
+          key: 'biz-orders',
+          className: 'jk-kb-stat',
+          'data-jk-kb-stat': 'biz-orders',
+        },
+          CardHeader(null, CardDescription({ className: 'jk-kb-stat-label' }, '订单数据')),
+          TrendBarChart({ points: biz.orders.trend, 'data-jk-kb-chart-card': 'biz-orders' }),
+          h('span', { className: 'jk-kb-stat-hint' },
+            bizNumOrDash(biz.orders.deals, ' 单已成交') + ' · 订单金额 ¥' + bizNumOrDash(biz.orders.amount))
+        ),
+        // 转化数据：不渲染主数值（占位横线已去掉），底部摘要加微 / 成单转化率。
+        Card({
+          key: 'biz-conversion',
+          className: 'jk-kb-stat',
+          'data-jk-kb-stat': 'biz-conversion',
+        },
+          CardHeader(null, CardDescription({ className: 'jk-kb-stat-label' }, '转化数据')),
+          h('span', { className: 'jk-kb-stat-hint' },
+            '加微转化率 ' + (biz.conversion.wechatRate === null ? '—' : biz.conversion.wechatRate + '%')
+            + ' · 成单转化率 ' + (biz.conversion.dealRate === null ? '—' : biz.conversion.dealRate + '%'))
+        )
+      );
+
       // 总空态：空内容用大框呈现（居中空文档图标 + 引导文案），下方最近入库区整体收起。
       const isEmpty = counts.notes === 0 && data.recent.length === 0;
       const emptyBox = isEmpty
@@ -5135,11 +5832,12 @@ window.__ModuleLoader__.load({
                   type: 'button',
                   variant: 'outline',
                   size: 'sm',
-                  className: 'jk-kb-recent-copy',
-                  'data-jk-kb-recent-copy': item.relPath || item.key,
+                  className: 'jk-kb-recent-open',
+                  'data-jk-kb-recent-open': item.relPath || item.key,
                   disabled: !item.relPath,
-                  onClick: () => copyToClipboard(item.relPath),
-                }, '复制路径')
+                  title: '打开所在目录并高亮：' + item.relPath,
+                  onClick: () => revealFile(item.relPath),
+                }, '打开目录')
               ))
             )
           : h('p', { className: 'jk-kb-hint', 'data-jk-kb-recent-empty': 'true' }, '还没有内容')
@@ -5168,6 +5866,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'jk-kb-dash', 'data-jk-kb-dashboard': 'true', 'data-jk-kb-dashboard-phase': 'ready' },
         header,
         stats,
+        bizStats,
         emptyBox,
         h('div', { className: 'jk-kb-dash-columns' }, recentBlock, maintainBlock)
       );
@@ -5421,6 +6120,8 @@ window.__ModuleLoader__.load({
       const [expanded, setExpanded] = React.useState({ '': true });
       const [currentDir, setCurrentDir] = React.useState('');
       const [preview, setPreview] = React.useState({ phase: 'idle', path: '', data: null, error: null });
+      // md 编辑器：mode（read/edit）、draft（编辑草稿）、saving、error；切换文件即重置回阅读。
+      const [editor, setEditor] = React.useState({ mode: 'read', draft: '', saving: false, error: null });
 
       // 加载一个目录：中栏列表 + 左树子文件夹缓存 + 展开标记，一次请求全部就绪。
       async function loadDir(dir, silent) {
@@ -5467,10 +6168,11 @@ window.__ModuleLoader__.load({
         setCurrentDir(parts.join('/'));
       }
 
-      /** 点击文件：右栏预览（加载失败降级为错误卡）。 */
+      /** 点击文件：右栏预览（加载失败降级为错误卡）；编辑器同时重置回阅读模式。 */
       async function onOpenFile(relPath) {
         const rel = typeof relPath === 'string' ? relPath : '';
         if (!rel) return;
+        setEditor({ mode: 'read', draft: '', saving: false, error: null });
         setPreview({ phase: 'loading', path: rel, data: null, error: null });
         const result = await fetchFileEntry(rel);
         const norm = normalizeFileResponse(result);
@@ -5481,17 +6183,62 @@ window.__ModuleLoader__.load({
         setPreview({ phase: 'ready', path: rel, data: norm.data, error: null });
       }
 
+      /** 进入编辑：以当前预览文本为草稿。 */
+      function onEnterEdit() {
+        if (preview.phase !== 'ready' || !isMarkdownPreview(preview.data)) return;
+        setEditor({ mode: 'edit', draft: preview.data.text, saving: false, error: null });
+      }
+
+      /** 放弃编辑：丢弃草稿回阅读模式。 */
+      function onExitEdit() {
+        setEditor({ mode: 'read', draft: '', saving: false, error: null });
+      }
+
+      function onDraftChange(value) {
+        setEditor((prev) => Object.assign({}, prev, { draft: typeof value === 'string' ? value : '' }));
+      }
+
+      /** 保存草稿：成功后更新预览元数据、回阅读模式，并静默刷新中栏 mtime。 */
+      async function onSaveDraft() {
+        if (editor.saving || preview.phase !== 'ready' || !isMarkdownPreview(preview.data)) return;
+        const path = preview.path;
+        const draft = editor.draft;
+        setEditor((prev) => Object.assign({}, prev, { saving: true }));
+        const result = await saveFileText(path, draft);
+        const norm = normalizeFileSaveResponse(result);
+        if (norm.ok === true) {
+          setPreview((prev) => (prev.path === path && prev.phase === 'ready'
+            ? Object.assign({}, prev, {
+                data: Object.assign({}, prev.data, {
+                  text: draft,
+                  sizeText: norm.data.sizeText,
+                  mtimeText: norm.data.mtimeText,
+                }),
+              })
+            : prev));
+          setEditor({ mode: 'read', draft: '', saving: false, error: null });
+          loadDir(currentDir, true);
+          return;
+        }
+        setEditor((prev) => Object.assign({}, prev, { saving: false, error: norm.error }));
+      }
+
       return FilesView({
         list: list,
         tree: tree,
         expanded: expanded,
         currentDir: currentDir,
         preview: preview,
+        editor: editor,
         onOpenDir: onOpenDir,
         onToggleDir: onToggleDir,
         onGoUp: onGoUp,
         onOpenFile: onOpenFile,
         onRefresh: () => loadDir(currentDir),
+        onEnterEdit: onEnterEdit,
+        onExitEdit: onExitEdit,
+        onDraftChange: onDraftChange,
+        onSaveDraft: onSaveDraft,
       });
     }
 
@@ -5506,6 +6253,9 @@ window.__ModuleLoader__.load({
       const expanded = p.expanded && typeof p.expanded === 'object' ? p.expanded : { '': true };
       const currentDir = typeof p.currentDir === 'string' ? p.currentDir : '';
       const preview = p.preview && typeof p.preview === 'object' ? p.preview : { phase: 'idle', path: '', data: null, error: null };
+      const editor = p.editor && typeof p.editor === 'object'
+        ? p.editor
+        : { mode: 'read', draft: '', saving: false, error: null };
       const data = list.data;
 
       // 递归渲染左树：dir（相对路径）下的已加载子文件夹；根节点 label「根目录」。
@@ -5652,10 +6402,67 @@ window.__ModuleLoader__.load({
           file.name + ' · ' + file.sizeText + ' · ' + file.mtimeText
         );
         if (file.kind === 'text') {
-          previewBody = h('div', { className: 'jk-kb-file-preview-body' },
-            metaRow,
-            h('pre', { className: 'jk-kb-file-preview-text', 'data-jk-kb-file-preview-text': 'true' }, file.text)
-          );
+          if (isMarkdownPreview(file)) {
+            // markdown：Obsidian 式阅读（渲染）/ 编辑（源码）双模式。
+            const editing = editor.mode === 'edit';
+            const toolbar = h('div', { className: 'jk-kb-file-preview-toolbar', 'data-jk-kb-md-toolbar': editing ? 'edit' : 'read' },
+              h('span', { className: 'jk-kb-files-crumb', 'data-jk-kb-md-mode': editing ? 'edit' : 'read' },
+                editing ? '编辑模式' : '阅读模式'),
+              h('div', { className: 'jk-kb-files-list-actions' },
+                editing
+                  ? [
+                      Button({
+                        variant: 'default',
+                        size: 'sm',
+                        key: 'save',
+                        'data-jk-kb-md-save': 'true',
+                        disabled: editor.saving === true,
+                        onClick: typeof p.onSaveDraft === 'function' ? p.onSaveDraft : undefined,
+                      }, editor.saving === true ? '保存中…' : '保存'),
+                      Button({
+                        variant: 'outline',
+                        size: 'sm',
+                        key: 'cancel',
+                        'data-jk-kb-md-cancel': 'true',
+                        disabled: editor.saving === true,
+                        onClick: typeof p.onExitEdit === 'function' ? p.onExitEdit : undefined,
+                      }, '取消'),
+                    ]
+                  : Button({
+                      variant: 'outline',
+                      size: 'sm',
+                      'data-jk-kb-md-edit': 'true',
+                      onClick: typeof p.onEnterEdit === 'function' ? p.onEnterEdit : undefined,
+                    }, BookOpenIcon(), ' 编辑')
+              )
+            );
+            const saveError = editing && editor.error
+              ? h('div', { className: 'jk-kb-error', 'data-jk-kb-md-error': (editor.error.code || 'unknown') },
+                  h('p', { className: 'jk-kb-hint' }, '保存失败：' + (editor.error.code || 'unknown') + ' ' + (editor.error.message || ''))
+                )
+              : null;
+            previewBody = h('div', { className: 'jk-kb-file-preview-body' },
+              metaRow,
+              toolbar,
+              saveError,
+              editing
+                ? h('textarea', {
+                    className: 'jk-kb-md-editor',
+                    'data-jk-kb-md-editor': 'true',
+                    value: editor.draft,
+                    spellCheck: false,
+                    onChange: (event) => (typeof p.onDraftChange === 'function'
+                      ? p.onDraftChange(event && event.target ? event.target.value : '')
+                      : undefined),
+                  })
+                : h('div', { className: 'jk-kb-md', 'data-jk-kb-md-view': 'true' }, renderMarkdown(file.text))
+            );
+          } else {
+            previewBody = h('div', { className: 'jk-kb-file-preview-body' },
+              metaRow,
+              h('pre', { className: 'jk-kb-file-preview-text', 'data-jk-kb-file-preview-text': 'true' }, file.text)
+            );
+          }
         } else if (file.kind === 'image') {
           previewBody = h('div', { className: 'jk-kb-file-preview-body' },
             metaRow,
@@ -6000,6 +6807,21 @@ window.__ModuleLoader__.load({
         loadSkillRegistryForRisk();
         return function () { aliveRef.current = false; };
       }, [p.reloadKey]);
+
+      // notice 自动消失：ok 类 4 秒、error 类 8 秒；新 notice 到来会重置计时。
+      // 避免成功提示（如「已启动，正在刷新任务列表…」）永久停留在页面上。
+      React.useEffect(function () {
+        const current = state && state.notice;
+        const delay = noticeAutoDismissDelay(current);
+        if (delay <= 0) return undefined;
+        const timer = setTimeout(function () {
+          if (!aliveRef.current) return;
+          setState((prev) => (prev.notice === current
+            ? reduceRunsPage(prev, { type: 'notice', notice: null })
+            : prev));
+        }, delay);
+        return function () { clearTimeout(timer); };
+      }, [state.notice]);
 
       function setSkillField(field, value) {
         setSkillForm((prev) => Object.assign({}, prev, { [field]: value }));
@@ -7227,6 +8049,13 @@ window.__ModuleLoader__.load({
                 : '还没有入柜记录'),
             h('p', { className: 'jk-kb-expert-responsibility', 'data-jk-kb-expert-responsibility': expert.id }, expert.responsibility || '—'),
             h('div', { className: 'jk-kb-expert-meta' },
+              // 来源标签：预设（default 主色底白字）/ 自定义（outline 描边），后接竖线与「技能：X」分隔。
+              Badge({
+                variant: expert.source === 'custom' ? 'outline' : 'default',
+                className: 'jk-kb-expert-source',
+                'data-jk-kb-expert-source': expert.id,
+              }, expert.source === 'custom' ? '自定义' : '预设'),
+              h('span', { className: 'jk-kb-expert-meta-divider', 'aria-hidden': 'true' }),
               h('span', {
                 className: 'jk-kb-expert-skills',
                 'data-jk-kb-expert-skills': expert.id,
@@ -9346,6 +10175,14 @@ window.__ModuleLoader__.load({
       HOST_EXPERTS_PATH: HOST_EXPERTS_PATH,
       HOST_FILES_PATH: HOST_FILES_PATH,
       HOST_FILE_PATH: HOST_FILE_PATH,
+      HOST_FILE_SAVE_PATH: HOST_FILE_SAVE_PATH,
+      HOST_FILE_REVEAL_PATH: HOST_FILE_REVEAL_PATH,
+      isMarkdownPreview: isMarkdownPreview,
+      saveFileText: saveFileText,
+      revealFile: revealFile,
+      normalizeFileSaveResponse: normalizeFileSaveResponse,
+      renderMarkdown: renderMarkdown,
+      mdInlineTokens: mdInlineTokens,
       HOST_DASHBOARD_PATH: HOST_DASHBOARD_PATH,
       HOST_DOCTOR_PATH: HOST_DOCTOR_PATH,
       HOST_DOCTOR_REPAIR_PATH: HOST_DOCTOR_REPAIR_PATH,
@@ -9438,6 +10275,13 @@ window.__ModuleLoader__.load({
       normalizeUsage: normalizeUsage,
       usageHasTokens: usageHasTokens,
       formatTokenCount: formatTokenCount,
+      normalizeBizTrend: normalizeBizTrend,
+      buildChartGeometry: buildChartGeometry,
+      smoothLinePath: smoothLinePath,
+      pickAxisLabels: pickAxisLabels,
+      Progress: Progress,
+      TrendLineChart: TrendLineChart,
+      TrendBarChart: TrendBarChart,
       normalizeUsageSource: normalizeUsageSource,
       usageListText: usageListText,
       buildLedgerCalendarQuery: buildLedgerCalendarQuery,
@@ -9553,6 +10397,7 @@ window.__ModuleLoader__.load({
       hasRunningRuns: hasRunningRuns,
       createRunsPageState: createRunsPageState,
       reduceRunsPage: reduceRunsPage,
+      noticeAutoDismissDelay: noticeAutoDismissDelay,
       normalizeRunsResponse: normalizeRunsResponse,
       createRunDetailState: createRunDetailState,
       reduceRunDetail: reduceRunDetail,

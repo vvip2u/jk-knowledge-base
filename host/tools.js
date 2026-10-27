@@ -449,6 +449,8 @@ export function expertView(record) {
     skillIds: Array.isArray(r.skillIds) ? r.skillIds : [],
     promptFragment: typeof r.promptFragment === 'string' ? r.promptFragment : '',
     status: r.status || 'active',
+    // 来源标记：createExpert（工具/HTTP）创建的带 custom；预设种子与历史数据不带 source，归一为 builtin。
+    source: r.source === 'custom' ? 'custom' : 'builtin',
     schemaVersion: r.schemaVersion,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -481,6 +483,7 @@ export function createExpert(args) {
     skillIds: Array.isArray(a.skillIds) ? a.skillIds.map((item) => String(item).trim()).filter(Boolean) : [],
     promptFragment: typeof a.promptFragment === 'string' ? a.promptFragment : '',
     status: 'active',
+    source: 'custom',
   });
   return { ok: true, expert: expertView(record), record: record };
 }

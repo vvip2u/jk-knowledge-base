@@ -473,13 +473,37 @@ const dashRaw = {
   today: { runs: 4, completed: 3, failed: 1, totalMs: 1000, inputTokens: 10, outputTokens: 5 },
   health: { storeGuard: 'ready', tools: { registered: 13, failed: 0 }, subagents: { available: true, providers: ['deepseek'] } },
   maintain: { lastReport: { period: '2026-10-17', summary: 'M01=2 M03=1 M04=0 M06=0 M07=0 M08=0', byRule: { M01: 2, M03: 1, M04: 0, M06: 0, M07: 0, M08: 0 } } },
+  biz: {
+    strategy: { milestone: 'M2 · 起号期', progress: 62 },
+    audience: {
+      accounts: 3,
+      followers: 12800,
+      prospects: 45,
+      trend: [
+        { label: 'W1', value: 9800 }, { label: 'W2', value: 10240 }, { label: 'W3', value: 11000 },
+        { label: 'W4', value: 11800 }, { label: 'W5', value: 12800 },
+      ],
+    },
+    orders: {
+      deals: 12,
+      amount: 45600,
+      trend: [
+        { label: '7月', value: 6000 }, { label: '8月', value: 9000 }, { label: '9月', value: 18600 },
+      ],
+    },
+    conversion: { wechatRate: 8.5, dealRate: 21.3 },
+  },
 };
 const dashNorm = I.normalizeDashboardResponse(Object.assign({ ok: true }, dashRaw));
 eq('normalizeDashboardResponse 认宿主响应', dashNorm.ok, true);
 const dashboardTree = I.DashboardView({ phase: 'ready', data: dashNorm.data, registryCount: 2 });
 const statCards = flatten(dashboardTree).filter((el) => el.props && el.props['data-jk-kb-stat'] !== undefined);
-eq('仪表盘 4 张统计卡', statCards.length, 4);
-deepEq('统计卡顺序', statCards.map((el) => el.props['data-jk-kb-stat']), ['entries', 'weekly', 'today', 'skills']);
+eq('仪表盘 8 张统计卡（两行各四张）', statCards.length, 8);
+deepEq('统计卡顺序', statCards.map((el) => el.props['data-jk-kb-stat']), ['entries', 'weekly', 'today', 'skills', 'biz-strategy', 'biz-audience', 'biz-orders', 'biz-conversion']);
+ok('经营看板渲染 Progress 与里程碑', !!findIn(dashboardTree, 'data-jk-kb-progress', 'strategy')
+  && textOf(findIn(dashboardTree, 'data-jk-kb-stat', 'biz-strategy')).indexOf('里程碑：M2 · 起号期') >= 0);
+ok('客资数据渲染曲线图', !!findIn(dashboardTree, 'data-jk-kb-chart', 'line'));
+ok('订单数据渲染柱状图', !!findIn(dashboardTree, 'data-jk-kb-chart', 'bar'));
 ok('统计卡渲染 label/value', textOf(findIn(dashboardTree, 'data-jk-kb-stat', 'entries')).indexOf('知识条目') >= 0
   && textOf(findIn(dashboardTree, 'data-jk-kb-stat', 'today')).indexOf('4') >= 0);
 ok('截断时显示「已截断」徽标', !!findIn(dashboardTree, 'data-jk-kb-truncated', 'true'));
@@ -572,7 +596,7 @@ const hostApplyCtx = {
 let hostApplyThrew = null;
 try { hostIndex.apply(hostApplyCtx, {}); } catch (err) { hostApplyThrew = err; }
 eq('host apply(假 webServer) 不抛异常', hostApplyThrew, null);
-eq('注册 21 条路由（+ /dashboard + /doctor + /doctor/repair + /files + /file）', hostRegistered.length, 21);
+eq('注册 23 条路由（+ /dashboard + /doctor + /doctor/repair + /files + /file + /file/save + /file/reveal）', hostRegistered.length, 23);
 deepEq('路由 path/kind 列表', hostRegistered.map((spec) => spec.kind + ' ' + spec.path).sort(), [
   'exact /plugins/jk-knowledge-base/config',
   'exact /plugins/jk-knowledge-base/config/validate',
@@ -581,6 +605,8 @@ deepEq('路由 path/kind 列表', hostRegistered.map((spec) => spec.kind + ' ' +
   'exact /plugins/jk-knowledge-base/doctor/repair',
   'exact /plugins/jk-knowledge-base/experts',
   'exact /plugins/jk-knowledge-base/file',
+  'exact /plugins/jk-knowledge-base/file/reveal',
+  'exact /plugins/jk-knowledge-base/file/save',
   'exact /plugins/jk-knowledge-base/files',
   'exact /plugins/jk-knowledge-base/health',
   'exact /plugins/jk-knowledge-base/ledger/calendar',
@@ -944,12 +970,103 @@ eq('file 不存在 → 404', fileMissing.status, 404);
 const fileMethod = await callHandler(filesHandlers.fileEntry, { method: 'POST', body: {} });
 eq('file 非 GET → 405', fileMethod.status, 405);
 
+// ── 文件保存路由（md 编辑模式写回）：白名单 / 防穿越 / 仅已存在文件 / 2MB ──
+const saveOk = await callHandler(filesHandlers.fileSave, { method: 'POST', body: { path: '03_内容/笔记.md', content: '# 你好\n\n**改好了**' } });
+eq('save 成功 → 200', saveOk.status, 200);
+eq('save ok=true', saveOk.json.ok, true);
+eq('save saved=true', saveOk.json.saved, true);
+eq('save 后盘上内容更新', fs.readFileSync(path.join(filesRoot, '03_内容', '笔记.md'), 'utf8'), '# 你好\n\n**改好了**');
+ok('save 返回新 size', typeof saveOk.json.size === 'number' && saveOk.json.size > 0);
+ok('save 返回新 mtimeMs', typeof saveOk.json.mtimeMs === 'number');
+eq('save 回读 kind=text', (await callHandler(filesHandlers.fileEntry, { method: 'GET', url: '/plugins/jk-knowledge-base/file?path=' + encodeURIComponent('03_内容/笔记.md') })).json.text, '# 你好\n\n**改好了**');
+const saveEscape = await callHandler(filesHandlers.fileSave, { method: 'POST', body: { path: '../../etc/passwd', content: 'x' } });
+eq('save 穿越 → 400', saveEscape.status, 400);
+eq('save 穿越 错误码', saveEscape.json.error.code, 'path-out-of-root');
+const savePng = await callHandler(filesHandlers.fileSave, { method: 'POST', body: { path: '03_内容/图表.png', content: 'x' } });
+eq('save 非文本白名单 → 415', savePng.status, 415);
+eq('save 非文本白名单 错误码', savePng.json.error.code, 'ext-not-editable');
+const saveMissing = await callHandler(filesHandlers.fileSave, { method: 'POST', body: { path: '03_内容/不存在.md', content: 'x' } });
+eq('save 文件不存在 → 404', saveMissing.status, 404);
+eq('save 文件不存在 错误码', saveMissing.json.error.code, 'file-not-found');
+const saveNoContent = await callHandler(filesHandlers.fileSave, { method: 'POST', body: { path: '03_内容/笔记.md' } });
+eq('save 缺 content → 400', saveNoContent.status, 400);
+const saveBadJson = await callHandler(filesHandlers.fileSave, { method: 'POST', body: 'not-json' });
+eq('save 非 JSON → 400', saveBadJson.status, 400);
+const saveMethod = await callHandler(filesHandlers.fileSave, { method: 'GET' });
+eq('save 非 POST → 405', saveMethod.status, 405);
+const saveNoRoot = await callHandler(hostRoutes.createHandlers({ store: hostConfig.createSettingsStore({ file: path.join(makeTmpDir('jkkb-save-noroot-'), 'settings.json') }) }).fileSave, { method: 'POST', body: { path: 'a.md', content: 'x' } });
+eq('save 未配根目录 → 409', saveNoRoot.status, 409);
+
+// ── 文件 reveal 路由（打开所在目录并高亮）：平台命令 / 防穿越 / 仅已存在文件 ──
+// revealCommand 纯函数：三平台命令分支
+deepEq('reveal darwin 命令', hostRoutes.revealCommand('darwin', '/kb/a.md'), { cmd: 'open', args: ['-R', '/kb/a.md'], highlighted: true });
+deepEq('reveal win32 命令', hostRoutes.revealCommand('win32', 'C:\\kb\\a.md'), { cmd: 'explorer', args: ['/select,C:\\kb\\a.md'], highlighted: true });
+deepEq('reveal linux 命令', hostRoutes.revealCommand('linux', '/kb/a.md'), { cmd: 'xdg-open', args: ['/kb'], highlighted: false });
+// 当前平台（darwin）：open -R 绝对路径 + unref（fire-and-forget）
+const revealSpawns = [];
+const revealHandlers = hostRoutes.createHandlers({
+  store: filesStore,
+  spawn: (cmd, args, opts) => {
+    revealSpawns.push({ cmd: cmd, args: args, opts: opts, unrefed: false });
+    return { unref() { if (revealSpawns.length > 0) revealSpawns[revealSpawns.length - 1].unrefed = true; } };
+  },
+});
+const revealOk = await callHandler(revealHandlers.fileReveal, { method: 'POST', body: { path: '03_内容/笔记.md' } });
+eq('reveal 成功 → 200', revealOk.status, 200);
+eq('reveal ok=true', revealOk.json.ok, true);
+eq('reveal revealed=true', revealOk.json.revealed, true);
+eq('reveal 返回规范化 path', revealOk.json.path, '03_内容/笔记.md');
+eq('reveal 返回文件名', revealOk.json.name, '笔记.md');
+eq('reveal darwin 高亮', revealOk.json.highlighted, true);
+eq('reveal 命令是 open', revealOk.json.command, 'open');
+eq('reveal spawn 调用次数', revealSpawns.length, 1);
+eq('reveal spawn cmd', revealSpawns[0].cmd, 'open');
+eq('reveal spawn 参数是 -R + 绝对路径', JSON.stringify(revealSpawns[0].args), JSON.stringify(['-R', path.join(filesRoot, '03_内容', '笔记.md')]));
+ok('reveal spawn detached', revealSpawns[0].opts && revealSpawns[0].opts.detached === true);
+ok('reveal spawn stdio ignore', JSON.stringify(revealSpawns[0].opts && revealSpawns[0].opts.stdio) === '"ignore"');
+ok('reveal spawn 已 unref', revealSpawns[0].unrefed === true);
+// win32 平台注入：explorer /select,
+const revealWinSpawns = [];
+const revealWinHandlers = hostRoutes.createHandlers({
+  store: filesStore,
+  platform: 'win32',
+  spawn: (cmd, args) => { revealWinSpawns.push({ cmd: cmd, args: args }); return { unref() {} }; },
+});
+const revealWin = await callHandler(revealWinHandlers.fileReveal, { method: 'POST', body: { path: '03_内容/笔记.md' } });
+eq('reveal win32 → 200', revealWin.status, 200);
+eq('reveal win32 命令', revealWinSpawns[0].cmd, 'explorer');
+ok('reveal win32 /select, 带绝对路径', revealWinSpawns[0].args[0].indexOf('/select,') === 0 && revealWinSpawns[0].args[0].indexOf('笔记.md') >= 0, JSON.stringify(revealWinSpawns[0].args));
+eq('reveal win32 高亮', revealWin.json.highlighted, true);
+// 错误分支：穿越 / 不存在 / 缺 path / 非 POST / 未配 root
+const revealEscape = await callHandler(revealHandlers.fileReveal, { method: 'POST', body: { path: '../../etc/passwd' } });
+eq('reveal 穿越 → 400', revealEscape.status, 400);
+eq('reveal 穿越 错误码', revealEscape.json.error.code, 'path-out-of-root');
+const revealMissing = await callHandler(revealHandlers.fileReveal, { method: 'POST', body: { path: '03_内容/不存在.md' } });
+eq('reveal 文件不存在 → 404', revealMissing.status, 404);
+eq('reveal 文件不存在 错误码', revealMissing.json.error.code, 'file-not-found');
+const revealNoPath = await callHandler(revealHandlers.fileReveal, { method: 'POST', body: {} });
+eq('reveal 缺 path → 400', revealNoPath.status, 400);
+eq('reveal 缺 path 错误码', revealNoPath.json.error.code, 'path-required');
+const revealBadJson = await callHandler(revealHandlers.fileReveal, { method: 'POST', body: 'not-json' });
+eq('reveal 非 JSON → 400', revealBadJson.status, 400);
+const revealMethod = await callHandler(revealHandlers.fileReveal, { method: 'GET' });
+eq('reveal 非 POST → 405', revealMethod.status, 405);
+const revealNoRoot = await callHandler(hostRoutes.createHandlers({ store: hostConfig.createSettingsStore({ file: path.join(makeTmpDir('jkkb-reveal-noroot-'), 'settings.json') }) }).fileReveal, { method: 'POST', body: { path: 'a.md' } });
+eq('reveal 未配根目录 → 409', revealNoRoot.status, 409);
+// spawn 抛错 → 500
+const revealBoom = await callHandler(hostRoutes.createHandlers({
+  store: filesStore,
+  spawn: () => { throw new Error('command not found'); },
+}).fileReveal, { method: 'POST', body: { path: '03_内容/笔记.md' } });
+eq('reveal spawn 抛错 → 500', revealBoom.status, 500);
+eq('reveal spawn 抛错 错误码', revealBoom.json.error.code, 'reveal-failed');
+
 deepEq('缺 webServer 时 registerRoutes 返回空数组', hostRoutes.registerRoutes({}, { store: routeStore }), []);
 const regSpecs = [];
 const wsCtx = { webServer: { register(spec) { regSpecs.push(spec); return () => {}; } } };
 const routeDisposers = hostRoutes.registerRoutes(wsCtx, { store: routeStore });
-eq('registerRoutes 注册 21 条路由', regSpecs.length, 21);
-eq('registerRoutes 返回 21 个 disposer', routeDisposers.length, 21);
+eq('registerRoutes 注册 23 条路由', regSpecs.length, 23);
+eq('registerRoutes 返回 23 个 disposer', routeDisposers.length, 23);
 ok('registerRoutes 缺 connection 也不抛', true);
 
 // ═══════════════════ 13. client 半：根目录配置 / 风险确认 / 引导态 ═══════════════════
@@ -1213,6 +1330,43 @@ ok('降级 steps 有记录', degradedDone.steps.length > 0, '条数 ' + degraded
 ok('降级 steps role 全是 PLUGIN', degradedDone.steps.every((item) => item.role === 'PLUGIN'), JSON.stringify(degradedDone.steps.map((x) => x.role)));
 ok('降级首步说明原因', String(degradedDone.steps[0].title).indexOf('降级') >= 0, String(degradedDone.steps[0].title));
 ok('降级执行真的建了库（13 个顶层目录）', engineDirs.every((name) => fs.existsSync(path.join(degradedRoot, name))), JSON.stringify(engineDirs));
+
+// 编排官「空跑」：route / subagents / parent 齐备，但子代理立即返回空结果（0 step、无用量）。
+// 修复前：直接信任 completed → 强制验收判 failed；修复后：降级为插件顺序执行把活干完。
+const emptyAgentRoot = makeTmpDir('jkkb-empty-agent-');
+const emptyAgentStore = hostConfig.createSettingsStore({ file: path.join(makeTmpDir('jkkb-empty-store-'), 'settings.json') });
+emptyAgentStore.save({
+  root: emptyAgentRoot,
+  rootConfirmedAt: '2026-10-17T05:00:00.000Z',
+  rootRiskAck: { at: '2026-10-17T05:00:00.000Z', version: 1, textHash: 'x' },
+  updatedAt: '2026-10-17T05:00:00.000Z',
+});
+const emptyAgentService = createRunService({
+  ctx: {
+    get: (name) => {
+      if (name === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'fake', model: 'fake-model' }) };
+      if (name === 'agents') return { list: () => [{ id: 'a1' }], roots: () => [{ id: 'a1' }] };
+      if (name === 'subagents') {
+        return {
+          list: () => ['spawn'],
+          start: () => Promise.resolve({
+            result: Promise.resolve({ output: [{ type: 'text', text: 'done' }], stopReason: 'completed' }),
+            dispose: () => {},
+          }),
+        };
+      }
+      return null;
+    },
+  },
+  store: emptyAgentStore,
+});
+const emptyStarted = await emptyAgentService.start({ kind: 'bootstrap' });
+eq('空跑场景仍能起 run', emptyStarted.ok, true);
+const emptyDone = await waitForTerminal(emptyAgentRoot, emptyStarted.runId);
+eq('空跑降级后 run 完成', emptyDone.run.status, 'completed');
+eq('空跑降级标记 agent-empty', emptyDone.run.degraded, 'agent-empty');
+ok('空跑降级真的建了库', engineDirs.every((name) => fs.existsSync(path.join(emptyAgentRoot, name))), JSON.stringify(engineDirs));
+ok('空跑降级 steps 有记录', emptyDone.steps.length > 0, '条数 ' + emptyDone.steps.length);
 
 const orchestratorConflictRoot = makeTmpDir('jkkb-conflict-');
 const conflictStore = hostConfig.createSettingsStore({ file: path.join(makeTmpDir('jkkb-conflict-store-'), 'settings.json') });
@@ -1682,7 +1836,7 @@ const strictCtx = makeStrictCtx(['webServer', 'connection'], {
 let strictThrew = null;
 try { hostIndex.apply(strictCtx, {}); } catch (err) { strictThrew = err; }
 eq('严格门禁 ctx 上 apply 不抛', strictThrew, null);
-eq('严格门禁下注册 21 条路由', strictRoutes.length, 21);
+eq('严格门禁下注册 23 条路由', strictRoutes.length, 23);
 eq('严格门禁下注册 19 个工具', strictTools.length, 19);
 deepEq('严格门禁下工具名完整', strictTools.map((d) => d.name), ['jk_kb_bootstrap', 'jk_kb_verify', 'jk_kb_reindex', 'jk_kb_inspect', 'jk_kb_step', 'jk_kb_curate', 'jk_kb_maintain', 'jk_kb_doctor', 'jk_kb_archive', 'jk_kb_expert_create', 'jk_kb_expert_update', 'jk_kb_expert_restore', 'jk_kb_expert_list', 'jk_kb_expert_archive', 'jk_kb_skill_create', 'jk_kb_skill_find', 'jk_kb_skill_run', 'jk_kb_skill_list', 'jk_kb_run_finish']);
 
@@ -3784,7 +3938,10 @@ const createdExpert = await expertTools.expertCreate({
 eq('create 专家成功', createdExpert.ok, true);
 eq('专家 id 为 EXP-001', createdExpert.id, 'EXP-001');
 eq('专家默认 active', createdExpert.expert.status, 'active');
+eq('create 专家带 custom 来源', createdExpert.expert.source, 'custom');
+eq('expertsRepo 落盘 source=custom', expertRepos.expertsRepo.get('EXP-001').source, 'custom');
 eq('expertsRepo 落盘', expertRepos.expertsRepo.get('EXP-001').name, '合同审阅专家');
+eq('expertView 无 source 兜底 builtin', toolsMod.expertView({ id: 'EXP-000', name: 'n', domain: 'd' }).source, 'builtin');
 
 // 38b. name / domain / responsibility 校验
 eq('name 必填', (await expertTools.expertCreate({ runId: expertRun.id, domain: 'd', responsibility: 'x'.repeat(12) })).code, 'name-required');
@@ -3831,7 +3988,7 @@ const expertsOk = await callHandler(expertHandlers.expertsList, { method: 'GET',
 eq('GET /experts → 200', expertsOk.status, 200);
 ok('GET /experts 只含 active', expertsOk.json.experts.every((item) => item.status === 'active'), JSON.stringify(expertsOk.json.experts.map((e) => e.id)));
 deepEq('GET /experts 字段齐', Object.keys(expertsOk.json.experts[0]).sort(),
-  ['cardCount', 'createdAt', 'danglingSkillIds', 'domain', 'id', 'lastUsedAt', 'name', 'promptFragment', 'responsibility', 'schemaVersion', 'skillIds', 'skillStates', 'status', 'updatedAt']);
+  ['cardCount', 'createdAt', 'danglingSkillIds', 'domain', 'id', 'lastUsedAt', 'name', 'promptFragment', 'responsibility', 'schemaVersion', 'skillIds', 'skillStates', 'source', 'status', 'updatedAt']);
 const expertsArchived = await callHandler(expertHandlers.expertsList, { method: 'GET', url: '/plugins/jk-knowledge-base/experts?status=archived' });
 eq('GET /experts?status=archived 有归档项', expertsArchived.json.experts.length, 1);
 const expertsBadStatus = await callHandler(expertHandlers.expertsList, { method: 'GET', url: '/plugins/jk-knowledge-base/experts?status=bogus' });
@@ -3892,7 +4049,8 @@ eq('POST /experts ok', createRes.json.ok, true);
 ok('POST 返回 EXP 编号', /^EXP-\d{3}$/.test(createRes.json.expert.id), JSON.stringify(createRes.json.expert.id));
 eq('POST 返回 active', createRes.json.expert.status, 'active');
 deepEq('POST 响应结构含版本与时间戳', Object.keys(createRes.json.expert).sort(),
-  ['createdAt', 'domain', 'id', 'name', 'promptFragment', 'responsibility', 'schemaVersion', 'skillIds', 'status', 'updatedAt']);
+  ['createdAt', 'domain', 'id', 'name', 'promptFragment', 'responsibility', 'schemaVersion', 'skillIds', 'source', 'status', 'updatedAt']);
+eq('POST 创建专家来源为 custom', createRes.json.expert.source, 'custom');
 const createdId = createRes.json.expert.id;
 const listAfterCreate = await callHandler(expertWrite.expertsList, { method: 'GET', url: expertsBase });
 ok('新建专家出现在 GET 列表', listAfterCreate.json.experts.some((item) => item.id === createdId), JSON.stringify(listAfterCreate.json.experts.map((e) => e.id)));
@@ -4087,6 +4245,8 @@ ok('recent 条目字段齐', dashRes.json.recent.every((item) => ['relPath', 'ti
 eq('lastReport 取最新', dashRes.json.maintain.lastReport.period, '2026-10-17');
 eq('lastReport summary', dashRes.json.maintain.lastReport.summary, 'M01=2 M03=1 M04=0 M06=0 M07=0 M08=0');
 ok('lastReport byRule 透出', typeof dashRes.json.maintain.lastReport.byRule.M01 === 'number');
+// biz 缺文件时四块全 null（写盘用例见 41f 之后的 41d-2，避免干扰「不写盘」快照断言）
+deepEq('无 biz 文件时四块全 null', dashRes.json.biz, { strategy: null, audience: null, orders: null, conversion: null });
 
 // 41e. 未配置 root → 409
 const emptyRootStore = hostConfig.createSettingsStore({ file: path.join(makeTmpDir('jkkb-dash-empty-'), 'settings.json') });
@@ -4109,6 +4269,46 @@ const dashSnapshotAfter = (() => {
   return out;
 })();
 deepEq('dashboard 不写盘（mtime 快照一致）', dashSnapshotAfter, dashSnapshot);
+
+// 41d-2. 经营看板 biz：写入 .jk-kb/dashboard-biz.json 后读回；趋势非法点过滤；脏 JSON 回落 null。
+fs.mkdirSync(path.join(dashRoot, '.jk-kb'), { recursive: true });
+fs.writeFileSync(path.join(dashRoot, '.jk-kb', 'dashboard-biz.json'), JSON.stringify({
+  strategy: { milestone: 'M2 · 起号期', progress: 62 },
+  audience: {
+    accounts: 3,
+    followers: 12800,
+    prospects: 45,
+    trend: [
+      { label: 'W1', value: 9800 }, { label: 'W2', value: 12800 },
+      { label: 'W3' }, null, { value: 'x' },
+    ],
+  },
+  orders: {
+    deals: 12,
+    amount: 45600,
+    trend: [{ label: '7月', value: 9000 }, { label: '8月', value: 18600 }],
+  },
+  conversion: { wechatRate: 8.5, dealRate: 21.3 },
+}));
+const dashBizRes = await callHandler(dashHandlers.dashboard, { method: 'GET', url: '/plugins/jk-knowledge-base/dashboard' });
+eq('biz 里程碑读回', dashBizRes.json.biz.strategy.milestone, 'M2 · 起号期');
+eq('biz 里程碑进度读回', dashBizRes.json.biz.strategy.progress, 62);
+eq('biz 账号数读回', dashBizRes.json.biz.audience.accounts, 3);
+eq('biz 粉丝数读回', dashBizRes.json.biz.audience.followers, 12800);
+eq('biz 潜在客户读回', dashBizRes.json.biz.audience.prospects, 45);
+deepEq('biz 客资趋势读回（过滤非法点）', dashBizRes.json.biz.audience.trend, [
+  { label: 'W1', value: 9800 }, { label: 'W2', value: 12800 },
+]);
+eq('biz 订单数读回', dashBizRes.json.biz.orders.deals, 12);
+eq('biz 订单金额读回', dashBizRes.json.biz.orders.amount, 45600);
+deepEq('biz 订单趋势读回', dashBizRes.json.biz.orders.trend, [
+  { label: '7月', value: 9000 }, { label: '8月', value: 18600 },
+]);
+eq('biz 加微转化率读回', dashBizRes.json.biz.conversion.wechatRate, 8.5);
+eq('biz 成单转化率读回', dashBizRes.json.biz.conversion.dealRate, 21.3);
+fs.writeFileSync(path.join(dashRoot, '.jk-kb', 'dashboard-biz.json'), '{not json');
+const dashBadBizRes = await callHandler(dashHandlers.dashboard, { method: 'GET', url: '/plugins/jk-knowledge-base/dashboard' });
+deepEq('biz 文件脏 JSON 回落 null', dashBadBizRes.json.biz, { strategy: null, audience: null, orders: null, conversion: null });
 
 // 41g. 目录归档：成功 moved.kind='dir'；目标已存在 → failed 而非 skipped
 const dirRoot = await makeVaultRoot('jkkb-dirarch-');

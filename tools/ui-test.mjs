@@ -203,6 +203,7 @@ eq('step skip → 已跳过', I.stepStatusLabel('skip'), '已跳过');
 eq('step error → 失败', I.stepStatusLabel('error'), '失败');
 eq('degraded no-agent 映射中文原因', I.describeDegraded('no-agent'), '未检测到可用的 agent，已降级为规则引擎执行');
 eq('degraded no-route 映射中文原因', I.describeDegraded('no-route'), '没有可用的 agent 路由，已降级为规则引擎执行');
+eq('degraded agent-empty 映射中文原因', I.describeDegraded('agent-empty'), '编排官未执行任何步骤，已降级为规则引擎执行');
 eq('未知 degraded 码原样展示', I.describeDegraded('weird'), 'weird');
 eq('currentStep 为数字时展示 3/5', I.formatProgress({ stepCount: 5, currentStep: 3 }), '3/5');
 eq('currentStep 为标题时展示步数+标题', I.formatProgress({ stepCount: 3, currentStep: '写入顶层目录' }), '3 步 · 写入顶层目录');
@@ -521,6 +522,15 @@ const conflictNoticeView = I.RunsBoardView({
 const noticeEl = findIn(conflictNoticeView, 'data-jk-kb-runs-notice', 'error');
 ok('409 提示渲染到通知条', !!noticeEl);
 contains('通知条文案友好', textOf(noticeEl), '已有任务在运行中');
+
+// notice 自动消失（ok 4s / error 8s；无效 notice 不注册定时器）
+eq('ok notice 4 秒消失', I.noticeAutoDismissDelay({ kind: 'ok', text: '「开始建库」已启动，正在刷新任务列表…' }), 4000);
+eq('error notice 8 秒消失', I.noticeAutoDismissDelay({ kind: 'error', text: '失败' }), 8000);
+eq('无 notice 不注册定时器', I.noticeAutoDismissDelay(null), 0);
+eq('空对象 notice 不注册定时器', I.noticeAutoDismissDelay({}), 0);
+eq('非对象 notice 不注册定时器', I.noticeAutoDismissDelay('ok'), 0);
+ok('RunsBoard 含 notice 自动清除 effect', source.indexOf('prev.notice === current') >= 0 && source.indexOf('type: \'notice\', notice: null })') >= 0);
+ok('effect 到期走 noticeAutoDismissDelay', source.indexOf('const delay = noticeAutoDismissDelay(current);') >= 0);
 
 // ═════════════════════════ 7. 宿主半未加载 / 版本不一致 诊断 ═════════════════════════
 async function withFetchStub(stub, fn) {
@@ -2607,6 +2617,8 @@ eq('专家领域', expertsNorm.experts[0].domain, '客户成功');
 eq('专家技能 id', expertsNorm.experts[0].skillIds.join(','), 'mkt-copy,mkt-plan');
 eq('专家状态', expertsNorm.experts[0].status, 'active');
 eq('专家缺字段降级', expertsNorm.experts[1].promptFragment, '');
+eq('专家无 source 归一为预设', expertsNorm.experts[0].source, 'builtin');
+eq('专家 source=custom 归一为自定义', I.normalizeExpertsResponse({ ok: true, experts: [Object.assign({}, expertsFixture[0], { id: 'EXP-003', source: 'custom' })] }).experts[0].source, 'custom');
 const expertsFetch = installFetch(() => ({ body: { ok: true, experts: [] } }));
 await I.fetchExperts({ status: 'active' });
 const expertsArchivedFetch = installFetch(() => ({ body: { ok: true, experts: [] } }));
@@ -2647,6 +2659,27 @@ contains('信号浮层技能介绍', textOf(findIn(expertsView, 'data-jk-kb-expe
 ok('信号浮层未绑定技能兜底', !!findIn(expertsView, 'data-jk-kb-expert-signal-empty', 'true'));
 eq('卡片提示词有', textOf(findIn(expertsView, 'data-jk-kb-expert-prompt', 'EXP-001')), '提示词：有');
 eq('卡片提示词无', textOf(findIn(expertsView, 'data-jk-kb-expert-prompt', 'EXP-002')), '提示词：无');
+// 来源标签：预设/自定义 Badge + 与「技能：X」之间的竖线分隔
+eq('预设专家显示预设标签', textOf(findIn(expertsView, 'data-jk-kb-expert-source', 'EXP-001')), '预设');
+ok('预设标签为 default 主色底白字徽章', String(findIn(expertsView, 'data-jk-kb-expert-source', 'EXP-001').props.className).indexOf('jk-kb-badge-default') >= 0);
+const expMetaRow = findIn(expertsView, 'data-jk-kb-expert', 'EXP-001') && findAll(expertsView, 'className', 'jk-kb-expert-meta')[0];
+ok('meta 行结构：标签 → 竖线 → 技能', !!expMetaRow
+  && expMetaRow.children[0] && String(expMetaRow.children[0].props.className).indexOf('jk-kb-expert-source') >= 0
+  && expMetaRow.children[1] && String(expMetaRow.children[1].props.className).indexOf('jk-kb-expert-meta-divider') >= 0
+  && expMetaRow.children[2] && String(expMetaRow.children[2].props['data-jk-kb-expert-skills'] || '') === 'EXP-001');
+const customExpertsNorm = I.normalizeExpertsResponse({ ok: true, experts: [Object.assign({}, expertsFixture[0], { id: 'EXP-003', source: 'custom' })] });
+const customExpertsView = I.ExpertsView({
+  status: 'active',
+  experts: { phase: 'ready', list: customExpertsNorm.experts, error: null },
+  skills: { phase: 'ready', groups: [], error: null },
+  form: { open: false, mode: 'create', id: '', fields: I.expertToForm(null), search: '', notice: null },
+  archive: { target: null, confirmed: false, busy: false, notice: null },
+  onEdit: () => {},
+  onArchive: () => {},
+});
+eq('自定义专家显示自定义标签', textOf(findIn(customExpertsView, 'data-jk-kb-expert-source', 'EXP-003')), '自定义');
+ok('自定义标签为 outline 描边徽章', String(findIn(customExpertsView, 'data-jk-kb-expert-source', 'EXP-003').props.className).indexOf('jk-kb-badge-outline') >= 0);
+ok('来源徽章为小圆角矩形（覆盖胶囊）', I.PANEL_STYLE.indexOf('.jk-kb-badge.jk-kb-expert-source{padding:1px 6px;font-size:10px;border-radius:4px;}') >= 0);
 findIn(expertsView, 'data-jk-kb-expert-edit', 'EXP-001').props.onClick();
 eq('编辑回传专家', editedExpert.id, 'EXP-001');
 eq('活跃卡片不再有归档按钮（按需求移除）', findIn(expertsView, 'data-jk-kb-expert-archive', 'EXP-001'), undefined);
@@ -3280,6 +3313,26 @@ const dashboardFixture = {
     subagents: { available: true, providers: ['spawn'] },
   },
   maintain: { lastReport: { period: '2026-10', summary: '共 3 条命中', byRule: { M01: 1, M03: 2, M04: 0, M08: 0 } } },
+  biz: {
+    strategy: { milestone: 'M2 · 起号期', progress: 62 },
+    audience: {
+      accounts: 3,
+      followers: 12800,
+      prospects: 45,
+      trend: [
+        { label: 'W1', value: 9800 }, { label: 'W2', value: 10240 }, { label: 'W3', value: 11000 },
+        { label: 'W4', value: 11800 }, { label: 'W5', value: 12800 },
+      ],
+    },
+    orders: {
+      deals: 12,
+      amount: 45600,
+      trend: [
+        { label: '7月', value: 6000 }, { label: '8月', value: 9000 }, { label: '9月', value: 18600 },
+      ],
+    },
+    conversion: { wechatRate: 8.5, dealRate: 21.3 },
+  },
 };
 // 固定 now 与 fixture 日期（2026-10-15/16/17）配套，避免"近 7 天估算"随真实时间漂移。
 const dashboard = I.presentDashboard(dashboardFixture, Date.parse('2026-10-17T00:00:00Z'));
@@ -3303,6 +3356,46 @@ eq('health 工具注册', dashboard.health.toolsRegistered, 9);
 eq('health 子代理可用', dashboard.health.subagentsAvailable, true);
 eq('maintain 报告 period', dashboard.maintain.lastReport.period, '2026-10');
 eq('maintain byRule', dashboard.maintain.lastReport.byRule.M03, 2);
+eq('biz 里程碑', dashboard.biz.strategy.milestone, 'M2 · 起号期');
+eq('biz 里程碑进度', dashboard.biz.strategy.progress, 62);
+eq('biz 账号数', dashboard.biz.audience.accounts, 3);
+eq('biz 粉丝数', dashboard.biz.audience.followers, 12800);
+eq('biz 潜在客户', dashboard.biz.audience.prospects, 45);
+eq('biz 订单数', dashboard.biz.orders.deals, 12);
+eq('biz 订单金额', dashboard.biz.orders.amount, 45600);
+eq('biz 加微转化率', dashboard.biz.conversion.wechatRate, 8.5);
+eq('biz 成单转化率', dashboard.biz.conversion.dealRate, 21.3);
+eq('biz 客资趋势点数', dashboard.biz.audience.trend.length, 5);
+eq('biz 客资趋势首点', dashboard.biz.audience.trend[0].value, 9800);
+eq('biz 订单趋势点数', dashboard.biz.orders.trend.length, 3);
+eq('biz 订单趋势末点', dashboard.biz.orders.trend[2].value, 18600);
+eq('趋势归一过滤非法点', JSON.stringify(I.normalizeBizTrend([
+  { label: 'A', value: 1 }, { label: 'B' }, null, { label: 'C', value: 'x' }, { label: 'D', value: 3 },
+])), JSON.stringify([{ label: 'A', value: 1 }, { label: 'D', value: 3 }]));
+eq('趋势归一非数组回落空', I.normalizeBizTrend('nope').length, 0);
+eq('趋势归一最多保留 12 点', I.normalizeBizTrend(Array.from({ length: 20 }, (item, index) => ({ label: 'P' + index, value: index }))).length, 12);
+const chartGeo = I.buildChartGeometry([1, 2, 3], 160, 44, 4);
+eq('图表几何点数', chartGeo.points.length, 3);
+eq('图表几何末点贴右上', chartGeo.points[2].x + ',' + chartGeo.points[2].y, '156,4');
+ok('图表几何首点贴左下', Math.abs(chartGeo.points[0].x - 4) < 0.01 && Math.abs(chartGeo.points[0].y - 40) < 0.01, JSON.stringify(chartGeo.points[0]));
+eq('图表几何空序列返回 null', I.buildChartGeometry([], 160, 44, 4), null);
+ok('极值相等时不贴边', I.buildChartGeometry([5, 5], 160, 44, 4).points[0].y > 4 && I.buildChartGeometry([5, 5], 160, 44, 4).points[0].y < 40);
+ok('平滑曲线以 M 开头', I.smoothLinePath(chartGeo.points).indexOf('M4 40') === 0, I.smoothLinePath(chartGeo.points));
+ok('平滑曲线含贝塞尔段', I.smoothLinePath(chartGeo.points).indexOf('C') >= 0);
+eq('单点曲线退化 M 命令', I.smoothLinePath([{ x: 5, y: 6 }]), 'M5 6');
+eq('空点曲线返回空串', I.smoothLinePath([]), '');
+eq('x 轴标签稀疏化', I.pickAxisLabels([
+  { label: 'A', value: 1 }, { label: 'B', value: 2 }, { label: 'C', value: 3 }, { label: 'D', value: 4 },
+  { label: 'E', value: 5 }, { label: 'F', value: 6 }, { label: 'G', value: 7 }, { label: 'H', value: 8 },
+], 4).map((slot) => slot.label).join(','), 'A,C,F,H');
+eq('x 轴标签少时不稀疏', I.pickAxisLabels([{ label: '甲' }, { label: '乙' }], 4).map((slot) => slot.label).join(','), '甲,乙');
+eq('x 轴无标签返回空', I.pickAxisLabels([{ value: 1 }, { value: 2 }], 4).length, 0);
+eq('Progress 超界夹到 100', I.Progress({ value: 150 }).props['aria-valuenow'], 100);
+eq('Progress 超界宽度 100%', I.Progress({ value: 150 }).children[0].props.style.width, '100%');
+eq('Progress 非法值按 0', I.Progress({ value: null }).props['aria-valuenow'], 0);
+eq('Progress 零值宽度 0%', I.Progress({ value: 0 }).children[0].props.style.width, '0%');
+ok('曲线图点数不足显示空态', I.TrendLineChart({ points: [{ label: 'W1', value: 1 }] }).props['data-jk-kb-chart-empty'] === 'true');
+ok('柱状图空序列显示空态', I.TrendBarChart({ points: [] }).props['data-jk-kb-chart-empty'] === 'true');
 eq('周新增估算（固定 now）', I.estimateWeekAdded([
   { updatedMs: Date.parse('2026-10-15T00:00:00Z') },
   { updatedMs: Date.parse('2026-10-01T00:00:00Z') },
@@ -3318,19 +3411,42 @@ const dashboardView = I.DashboardView({
 ok('仪表盘容器', !!findIn(dashboardView, 'data-jk-kb-dashboard', 'true'));
 eq('仪表盘阶段标记', findIn(dashboardView, 'data-jk-kb-dashboard', 'true').props['data-jk-kb-dashboard-phase'], 'ready');
 const dashboardCards = flatten(dashboardView).filter((el) => el.props && el.props['data-jk-kb-stat'] !== undefined);
-eq('四张卡 id', dashboardCards.map((el) => el.props['data-jk-kb-stat']).join(','), 'entries,weekly,today,skills');
+eq('八张卡 id（两行各四张）', dashboardCards.map((el) => el.props['data-jk-kb-stat']).join(','), 'entries,weekly,today,skills,biz-strategy,biz-audience,biz-orders,biz-conversion');
 contains('知识条目卡数值', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'entries')), '128');
 contains('知识条目副文案', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'entries')), '13 个顶层目录');
 contains('本周新增估算', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'weekly')), '2');
 contains('今日任务卡', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'today')), '完成 2 · 失败 1');
 contains('技能数卡（47+3）', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'skills')), '50');
 contains('技能数副文案', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'skills')), '内置 47 · 自定义 3');
+// 经营看板第二行：战略布局（Progress）/ 客资数据（曲线图）/ 订单数据（柱状图）/ 转化数据（占位值）
+ok('经营看板行容器', !!findIn(dashboardView, 'data-jk-kb-biz-stats', 'true'));
+contains('战略布局进度数值', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-strategy')), '62%');
+ok('战略布局渲染 Progress', !!findIn(dashboardView, 'data-jk-kb-progress', 'strategy'));
+eq('战略布局 Progress 宽度 62%', findIn(dashboardView, 'data-jk-kb-progress', 'strategy').children[0].props.style.width, '62%');
+contains('战略布局里程碑', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-strategy')), '里程碑：M2 · 起号期');
+ok('客资数据渲染曲线图', !!findIn(dashboardView, 'data-jk-kb-chart', 'line'));
+eq('客资曲线图挂卡', findIn(dashboardView, 'data-jk-kb-chart', 'line').props['data-jk-kb-chart-card'], 'biz-audience');
+ok('客资曲线含平滑路径', flatten(findIn(dashboardView, 'data-jk-kb-chart', 'line')).some((el) => el.type === 'path' && String(el.props.d || '').indexOf('C') >= 0));
+ok('客资曲线含数据点', flatten(findIn(dashboardView, 'data-jk-kb-chart', 'line')).some((el) => el.type === 'circle'));
+ok('客资曲线含网格线', flatten(findIn(dashboardView, 'data-jk-kb-chart', 'line')).some((el) => el.type === 'line'));
+contains('客资账号数', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-audience')), '3 个账号');
+contains('客资粉丝数', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-audience')), '粉丝 12,800');
+contains('客资潜在客户', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-audience')), '潜在接洽客户 45');
+ok('订单数据渲染柱状图', !!findIn(dashboardView, 'data-jk-kb-chart', 'bar'));
+eq('订单柱数量', flatten(findIn(dashboardView, 'data-jk-kb-chart', 'bar')).filter((el) => el.type === 'rect').length, 3);
+contains('订单成交数', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-orders')), '12 单已成交');
+contains('订单金额', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-orders')), '订单金额 ¥45,600');
+eq('转化数据值占位', textOf(findIn(findIn(dashboardView, 'data-jk-kb-stat', 'biz-conversion'), 'className', 'jk-kb-stat-value')), '—');
+contains('转化加微率', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-conversion')), '加微转化率 8.5%');
+contains('转化成单率', textOf(findIn(dashboardView, 'data-jk-kb-stat', 'biz-conversion')), '成单转化率 21.3%');
 eq('截断标记渲染', !!findIn(dashboardView, 'data-jk-kb-truncated', 'true'), true);
 const recentItems = flatten(dashboardView).filter((el) => el.props && el.props['data-jk-kb-recent'] !== undefined);
 eq('最近入库条数', recentItems.length, 2);
 contains('最近入库标题', textOf(recentItems[0]), '客户访谈');
 contains('最近入库相对路径', textOf(recentItems[0]), '03_内容/客户访谈.md');
-eq('最近入库可复制路径', !!findIn(dashboardView, 'data-jk-kb-recent-copy', '03_内容/客户访谈.md'), true);
+eq('最近入库可打开', !!findIn(dashboardView, 'data-jk-kb-recent-open', '03_内容/客户访谈.md'), true);
+eq('最近入库打开按钮文案', textOf(findIn(dashboardView, 'data-jk-kb-recent-open', '03_内容/客户访谈.md')), '打开目录');
+eq('最近入库复制按钮已移除', findIn(dashboardView, 'data-jk-kb-recent-copy', '03_内容/客户访谈.md'), undefined);
 eq('仪表盘不再渲染运行状态块（迁至使用信息）', findIn(dashboardView, 'data-jk-kb-runtime', 'root'), undefined);
 contains('最近整理 period', textOf(findIn(dashboardView, 'data-jk-kb-maintain-period', 'true')), '2026-10');
 contains('最近整理 byRule', textOf(findIn(dashboardView, 'data-jk-kb-maintain-rules', 'true')), 'M01=1');
@@ -3351,7 +3467,21 @@ contains('无自定义技能时只显示 47', textOf(findIn(noRegistryView, 'dat
 contains('无自定义技能副文案', textOf(findIn(noRegistryView, 'data-jk-kb-stat', 'skills')), '内置 47');
 const readyWithoutWeek = I.presentDashboard({ counts: { notes: 0, dirs: 0 }, recent: [], today: {}, health: {}, runtime: {}, maintain: {} });
 eq('缺 weekAdded 用估算', readyWithoutWeek.counts.weekAdded, null);
+// 经营看板缺省（宿主无 biz 块）：四卡全部占位
+eq('缺 biz 归一 null', readyWithoutWeek.biz.strategy.milestone, null);
+eq('缺 biz 归一 progress null', readyWithoutWeek.biz.conversion.wechatRate, null);
+eq('缺 biz 趋势归一空数组', readyWithoutWeek.biz.audience.trend.length, 0);
 const emptyDashboardView = I.DashboardView({ phase: 'ready', data: readyWithoutWeek, registryCount: null, onRefresh: () => {}, onRetry: () => {} });
+contains('缺 biz 战略卡占位', textOf(findIn(emptyDashboardView, 'data-jk-kb-stat', 'biz-strategy')), '—');
+eq('缺 biz 战略卡 Progress 归零', findIn(emptyDashboardView, 'data-jk-kb-progress', 'strategy').children[0].props.style.width, '0%');
+contains('缺 biz 战略卡里程碑占位', textOf(findIn(emptyDashboardView, 'data-jk-kb-stat', 'biz-strategy')), '里程碑：—');
+ok('缺 biz 客资卡趋势空态', findIn(emptyDashboardView, 'data-jk-kb-chart-card', 'biz-audience').props['data-jk-kb-chart-empty'] === 'true');
+contains('缺 biz 客资卡空态文案', textOf(findIn(emptyDashboardView, 'data-jk-kb-chart-card', 'biz-audience')), '暂无趋势数据');
+contains('缺 biz 客资卡占位', textOf(findIn(emptyDashboardView, 'data-jk-kb-stat', 'biz-audience')), '— · 粉丝 — · 潜在接洽客户 —');
+ok('缺 biz 订单卡趋势空态', findIn(emptyDashboardView, 'data-jk-kb-chart-card', 'biz-orders').props['data-jk-kb-chart-empty'] === 'true');
+contains('缺 biz 订单卡占位', textOf(findIn(emptyDashboardView, 'data-jk-kb-stat', 'biz-orders')), '— · 订单金额 ¥—');
+contains('缺 biz 转化卡占位', textOf(findIn(emptyDashboardView, 'data-jk-kb-stat', 'biz-conversion')), '加微转化率 — · 成单转化率 —');
+eq('缺 biz 转化卡值恒占位', textOf(findIn(findIn(emptyDashboardView, 'data-jk-kb-stat', 'biz-conversion'), 'className', 'jk-kb-stat-value')), '—');
 contains('仪表盘空态大框文案', textOf(findIn(emptyDashboardView, 'data-jk-kb-dashboard-empty', 'true')), '快来放第一篇文档吧');
 eq('仪表盘空态含图标', !!findIn(emptyDashboardView, 'data-jk-kb-dashboard-empty', 'true').children[0], true);
 eq('总空态下最近入库区收起', !!findIn(emptyDashboardView, 'data-jk-kb-recent-empty', 'true'), false);
@@ -3454,10 +3584,14 @@ eq('中栏文件点击预览', openedFile, '03_内容/数据.bin');
 eq('根目录时上一级禁用', findIn(filesReadyView, 'data-jk-kb-files-up', 'true').props.disabled, false);
 findIn(filesReadyView, 'data-jk-kb-files-up', 'true').props.onClick();
 eq('上一级回调', wentUp, 1);
-// 右栏：text 分支 → pre 原文
+// 右栏：md 文本 → Obsidian 式阅读视图（渲染标题，不再是 pre 原文）
 contains('text 预览元信息', textOf(findIn(filesReadyView, 'data-jk-kb-file-preview-meta', 'true')), '笔记.md');
-eq('text 预览渲染 pre', findIn(filesReadyView, 'data-jk-kb-file-preview-text', 'true').type, 'pre');
-eq('text 预览正文', textOf(findIn(filesReadyView, 'data-jk-kb-file-preview-text', 'true')), '# 标题');
+ok('md 渲染阅读视图容器', !!findIn(filesReadyView, 'data-jk-kb-md-view', 'true'));
+eq('md 阅读模式标记', findIn(filesReadyView, 'data-jk-kb-md-toolbar', 'read').props['data-jk-kb-md-toolbar'], 'read');
+eq('md # 渲染为 h1', flatten(findIn(filesReadyView, 'data-jk-kb-md-view', 'true')).filter((el) => el.type === 'h1').length, 1);
+eq('md 标题正文', textOf(findIn(filesReadyView, 'data-jk-kb-md-view', 'true').children[0]), '标题');
+ok('md 阅读模式有编辑入口', !!findIn(filesReadyView, 'data-jk-kb-md-edit', 'true'));
+ok('md 阅读模式不渲染 pre 原文', !findIn(filesReadyView, 'data-jk-kb-file-preview-text', 'true'));
 // image 分支 → img[dataUrl]
 const filesImageView = I.FilesView({
   list: { phase: 'ready', data: filesViewData, error: null },
@@ -3480,6 +3614,160 @@ const filesLargeView = I.FilesView({
   preview: { phase: 'ready', path: '大文件.md', data: I.presentFilePreview({ kind: 'too-large', name: '大文件.md', size: 3 * 1024 * 1024, mtimeMs: BASE_MS }), error: null },
 });
 ok('too-large 分支提示', !!findIn(filesLargeView, 'data-jk-kb-file-preview-toolarge', 'true'));
+// 非 md 文本（.txt）→ 仍是 pre 原文
+const txtPreview = I.presentFilePreview({ ok: true, kind: 'text', path: '说明.txt', name: '说明.txt', ext: '.txt', size: 6, mtimeMs: BASE_MS, text: 'plain' });
+const filesTxtView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': [] }, expanded: { '': true }, currentDir: '',
+  preview: { phase: 'ready', path: '说明.txt', data: txtPreview, error: null },
+});
+eq('txt 仍渲染 pre', findIn(filesTxtView, 'data-jk-kb-file-preview-text', 'true').type, 'pre');
+ok('txt 无 md 阅读视图', !findIn(filesTxtView, 'data-jk-kb-md-view', 'true'));
+
+// md 编辑模式视图：textarea 源码 + 保存/取消 + 回调
+let editEntered = 0, editExited = 0, draftChanged = '', saveClicked = 0;
+const filesEditView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': [] }, expanded: { '': true }, currentDir: '03_内容',
+  preview: { phase: 'ready', path: '03_内容/笔记.md', data: textPreview, error: null },
+  editor: { mode: 'edit', draft: '# 草稿', saving: false, error: null },
+  onEnterEdit: () => { editEntered += 1; },
+  onExitEdit: () => { editExited += 1; },
+  onDraftChange: (v) => { draftChanged = v; },
+  onSaveDraft: () => { saveClicked += 1; },
+});
+eq('编辑模式标记', findIn(filesEditView, 'data-jk-kb-md-toolbar', 'edit').props['data-jk-kb-md-toolbar'], 'edit');
+eq('编辑器是 textarea', findIn(filesEditView, 'data-jk-kb-md-editor', 'true').type, 'textarea');
+eq('编辑器带草稿', findIn(filesEditView, 'data-jk-kb-md-editor', 'true').props.value, '# 草稿');
+findIn(filesEditView, 'data-jk-kb-md-editor', 'true').props.onChange({ target: { value: '# 新内容' } });
+eq('草稿变更回调', draftChanged, '# 新内容');
+ok('编辑模式有保存按钮', !!findIn(filesEditView, 'data-jk-kb-md-save', 'true'));
+findIn(filesEditView, 'data-jk-kb-md-save', 'true').props.onClick();
+eq('保存回调触发', saveClicked, 1);
+ok('编辑模式有取消按钮', !!findIn(filesEditView, 'data-jk-kb-md-cancel', 'true'));
+findIn(filesEditView, 'data-jk-kb-md-cancel', 'true').props.onClick();
+eq('取消回调触发', editExited, 1);
+ok('编辑模式不渲染阅读视图', !findIn(filesEditView, 'data-jk-kb-md-view', 'true'));
+// 保存失败错误框
+const filesSaveErrView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': [] }, expanded: { '': true }, currentDir: '03_内容',
+  preview: { phase: 'ready', path: '03_内容/笔记.md', data: textPreview, error: null },
+  editor: { mode: 'edit', draft: 'x', saving: false, error: { code: 'file-write-failed', message: '磁盘只读' } },
+});
+contains('保存失败文案', textOf(findIn(filesSaveErrView, 'data-jk-kb-md-error', 'file-write-failed')), '磁盘只读');
+// 保存中：按钮禁用 + 文案
+const filesSavingView = I.FilesView({
+  list: { phase: 'ready', data: filesViewData, error: null },
+  tree: { '': [] }, expanded: { '': true }, currentDir: '03_内容',
+  preview: { phase: 'ready', path: '03_内容/笔记.md', data: textPreview, error: null },
+  editor: { mode: 'edit', draft: 'x', saving: true, error: null },
+});
+eq('保存中按钮禁用', findIn(filesSavingView, 'data-jk-kb-md-save', 'true').props.disabled, true);
+contains('保存中文案', textOf(findIn(filesSavingView, 'data-jk-kb-md-save', 'true')), '保存中');
+
+// md 判定 / 保存请求
+eq('md 判定：.md + text', I.isMarkdownPreview({ kind: 'text', ext: '.md' }), true);
+eq('md 判定：.markdown + text', I.isMarkdownPreview({ kind: 'text', ext: '.markdown' }), true);
+eq('md 判定：.txt 不算', I.isMarkdownPreview({ kind: 'text', ext: '.txt' }), false);
+eq('md 判定：image 不算', I.isMarkdownPreview({ kind: 'image', ext: '.md' }), false);
+const saveOkNorm = I.normalizeFileSaveResponse({ ok: true, saved: true, path: '03_内容/笔记.md', name: '笔记.md', size: 128, mtimeMs: BASE_MS });
+eq('保存成功归一 ok', saveOkNorm.ok, true);
+ok('保存成功带 sizeText', typeof saveOkNorm.data.sizeText === 'string' && saveOkNorm.data.sizeText.length > 0);
+eq('保存失败归一', I.normalizeFileSaveResponse({ ok: false, error: { code: 'x', message: 'y' } }).ok, false);
+const saveFetch = installFetch(() => ({ body: { ok: true, saved: true, path: 'a.md', name: 'a.md', size: 1, mtimeMs: 1 } }));
+await I.saveFileText('03_内容/笔记.md', '# 新');
+saveFetch.restore();
+eq('保存请求 URL', saveFetch.calls[0].url, I.HOST_FILE_SAVE_PATH);
+eq('保存请求 POST', saveFetch.calls[0].init.method, 'POST');
+eq('保存请求 body', saveFetch.calls[0].init.body, JSON.stringify({ path: '03_内容/笔记.md', content: '# 新' }));
+// revealFile：打开所在目录请求契约
+const revealFetch = installFetch(() => ({ body: { ok: true, revealed: true, path: '03_内容/笔记.md', highlighted: true, command: 'open' } }));
+await I.revealFile('03_内容/笔记.md');
+revealFetch.restore();
+eq('打开请求 URL', revealFetch.calls[0].url, I.HOST_FILE_REVEAL_PATH);
+eq('打开请求 POST', revealFetch.calls[0].init.method, 'POST');
+eq('打开请求 body', revealFetch.calls[0].init.body, JSON.stringify({ path: '03_内容/笔记.md' }));
+const revealEmpty = await I.revealFile('');
+eq('空路径不发起请求', revealEmpty.ok, false);
+eq('空路径错误码', revealEmpty.error.code, 'path-required');
+
+// renderMarkdown 语法块
+const mdDoc = [
+  '# 主标题',
+  '',
+  '第一段 **粗体** *斜体* ~~删除~~ `code` [链接](https://a.b/c)',
+  '第二行（段内 br）',
+  '',
+  '## 二级',
+  '',
+  '> 引用一行',
+  '> 引用二行',
+  '',
+  '- 无序一',
+  '  - 嵌套项',
+  '- [ ] 待办',
+  '- [x] 完成',
+  '',
+  '1. 有序一',
+  '2. 有序二',
+  '',
+  '```js',
+  'const a = 1;',
+  '```',
+  '',
+  '| 列A | 列B |',
+  '| --- | --- |',
+  '| a1 | b1 |',
+  '',
+  '---',
+  '',
+  '<script>alert(1)</script>',
+].join('\n');
+const mdBlocks = I.renderMarkdown(mdDoc);
+const mdTypes = mdBlocks.map((b) => b.type);
+eq('md 块序：h1/p/h2/quote/ul/ol/pre/table/hr/p', JSON.stringify(mdTypes), JSON.stringify(['h1', 'p', 'h2', 'blockquote', 'ul', 'ol', 'pre', 'table', 'hr', 'p']));
+eq('md h1 文本', textOf(mdBlocks[0]), '主标题');
+const paraInline = flatten(mdBlocks[1]).filter((el) => el.type);
+ok('md 段内含 strong', paraInline.some((el) => el.type === 'strong'));
+ok('md 段内含 em', paraInline.some((el) => el.type === 'em'));
+ok('md 段内含 del', paraInline.some((el) => el.type === 'del'));
+ok('md 段内含 code', paraInline.some((el) => el.type === 'code'));
+const linkEl = paraInline.find((el) => el.type === 'a');
+ok('md 段内含链接', !!linkEl);
+eq('md 链接 href', linkEl && linkEl.props.href, 'https://a.b/c');
+eq('md 链接 rel 安全', linkEl && linkEl.props.rel, 'noreferrer noopener');
+// stub createElement 下 p 的 children 是 [[…]] 包装数组，用 flatten 解包后再找 br
+ok('md 段内 br', flatten(mdBlocks[1]).some((el) => el && el.type === 'br'));
+// 引用内两行无空行分隔 → 递归渲染合并为一个段落（Obsidian 行为）：一个 p + 段内 br
+eq('md 引用块合并为一段', flatten(mdBlocks[3]).filter((el) => el.type === 'p').length, 1);
+ok('md 引用段内 br', flatten(mdBlocks[3]).some((el) => el.type === 'br'));
+contains('md 引用文本完整', textOf(mdBlocks[3]).replace(/\s+/g, ''), '引用一行引用二行');
+const mdList = mdBlocks[4];
+eq('md 无序列表类型', mdList.type, 'ul');
+const mdItems = Array.isArray(mdList.children[0]) ? mdList.children[0] : mdList.children;
+eq('md 列表项数', mdItems.length, 3);
+ok('md 嵌套子列表', flatten(mdItems[0]).some((el) => el.type === 'ul'));
+const taskBoxes = flatten(mdList).filter((el) => el.type === 'input');
+eq('md 任务复选框数', taskBoxes.length, 2);
+eq('md 待办未勾选', taskBoxes[0].props.checked, false);
+eq('md 完成已勾选', taskBoxes[1].props.checked, true);
+eq('md 有序列表类型', mdBlocks[5].type, 'ol');
+eq('md 有序项数', (Array.isArray(mdBlocks[5].children[0]) ? mdBlocks[5].children[0] : mdBlocks[5].children).length, 2);
+eq('md 代码块语言标记', mdBlocks[6].props['data-jk-kb-md-pre'], 'js');
+eq('md 代码块正文', textOf(mdBlocks[6]), 'const a = 1;');
+eq('md 表格头', flatten(mdBlocks[7]).filter((el) => el.type === 'th').map((th) => textOf(th)).join(','), '列A,列B');
+eq('md 表格体', flatten(mdBlocks[7]).filter((el) => el.type === 'td').map((td) => textOf(td)).join(','), 'a1,b1');
+// XSS：script 标签只能作为纯文本出现（React 文本节点自动转义）
+eq('md script 不渲染为元素', flatten(mdBlocks[9]).some((el) => el.type === 'script'), false);
+contains('md script 作为纯文本', textOf(mdBlocks[9]), '<script>alert(1)</script>');
+// 行内 XSS / 非 http 链接拦截
+const inlineOut = I.mdInlineTokens('<img src=x> [x](javascript:alert(1)) [ok](https://ok.dev)');
+eq('行内不产生 img 元素', inlineOut.some((el) => el.type === 'img'), false);
+// 测试串同时含合法 https 链接：断言应指向「无 javascript: href 的 a」而非「无任何 a」
+eq('行内 javascript: 链接拦截', inlineOut.some((el) => el.type === 'a' && String(el.props.href).indexOf('javascript:') === 0), false);
+eq('行内放行的 a 全部是 http(s)', inlineOut.filter((el) => el.type === 'a').every((el) => /^https?:\/\//i.test(String(el.props.href))), true);
+eq('行内 https 链接放行', I.mdInlineTokens('[ok](https://ok.dev)').some((el) => el.type === 'a'), true);
 // 预览 idle / loading / error 三态
 const filesIdleView = I.FilesView({ list: { phase: 'ready', data: filesViewData, error: null }, tree: { '': [] }, expanded: { '': true }, currentDir: '', preview: { phase: 'idle' } });
 ok('未选文件占位', !!findIn(filesIdleView, 'data-jk-kb-file-preview-idle', 'true'));
@@ -3653,7 +3941,7 @@ eq('引导条去设置按钮', textOf(findIn(dashboardSkeleton, 'data-jk-kb-guid
 findIn(dashboardSkeleton, 'data-jk-kb-guide-bar-open-settings', 'true').props.onClick();
 eq('引导条按钮回调', skeletonSettingsOpened, 1);
 const skelCards = flatten(dashboardSkeleton).filter((el) => el.props && el.props['data-jk-kb-skeleton-card'] !== undefined);
-eq('四张统计卡骨架', skelCards.map((el) => el.props['data-jk-kb-skeleton-card']).join(','), 'entries,weekly,today,skills');
+eq('八张统计卡骨架（两行各四张）', skelCards.map((el) => el.props['data-jk-kb-skeleton-card']).join(','), 'entries,weekly,today,skills,biz-strategy,biz-audience,biz-orders,biz-conversion');
 eq('最近入库骨架 3 行', flatten(dashboardSkeleton).filter((el) => el.props && el.props['data-jk-kb-skeleton-recent-row'] !== undefined).length, 3);
 eq('运行状态骨架 3 行', flatten(dashboardSkeleton).filter((el) => el.props && el.props['data-jk-kb-skeleton-runtime-row'] !== undefined).length, 3);
 eq('骨架不渲染真实数据块', findIn(dashboardSkeleton, 'data-jk-kb-dashboard', 'ready'), undefined);
@@ -3996,6 +4284,29 @@ ok('样式常量仍是字符串', typeof I.SETTINGS_STYLE === 'string' && typeof
 ok('面板样式新增 jk-kb- 前缀类', I.PANEL_STYLE.indexOf('.jk-kb-table-row') >= 0);
 ok('样式只用 var(--dsw-alias-*) 颜色', I.PANEL_STYLE.indexOf('--dsw-alias-') >= 0);
 ok('样式未写死十六进制颜色', !/#[0-9a-fA-F]{3,6}/.test(I.PANEL_STYLE));
+// md 阅读模式配色层次回归（全部令牌引用，无 hex / rgb()）
+ok('md h1 主色 + 主色底线', I.PANEL_STYLE.indexOf('.jk-kb-md-h1{font-size:20px;color:var(--primary);') >= 0);
+ok('md h2 主色 + 淡底线', I.PANEL_STYLE.indexOf('.jk-kb-md-h2{font-size:17px;color:var(--primary);') >= 0);
+ok('md 引用块主色竖条', I.PANEL_STYLE.indexOf('.jk-kb-md-quote{margin:0 0 10px;padding:6px 12px;border-left:3px solid var(--primary);') >= 0);
+ok('md 行内 code 警示红', I.PANEL_STYLE.indexOf('.jk-kb-md-code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--destructive);') >= 0);
+ok('md 代码块语言徽章', I.PANEL_STYLE.indexOf('.jk-kb-md-pre[data-jk-kb-md-pre]::before') >= 0);
+ok('md 列表符主色', I.PANEL_STYLE.indexOf('.jk-kb-md-li::marker{color:var(--primary);}') >= 0);
+ok('md 任务勾选变成功色', I.PANEL_STYLE.indexOf('.jk-kb-md-task:checked{accent-color:var(--success);}') >= 0);
+ok('md 已完成任务划线置灰', I.PANEL_STYLE.indexOf('.jk-kb-md-li:has(.jk-kb-md-task:checked){color:var(--dsw-alias-label-tertiary);text-decoration:line-through;}') >= 0);
+ok('md 表头悬停底 + 主色字', I.PANEL_STYLE.indexOf('.jk-kb-md-th{background:var(--dsw-alias-interactive-bg-hover);color:var(--primary);') >= 0);
+ok('md 分割线主色渐变', I.PANEL_STYLE.indexOf('linear-gradient(90deg,var(--dsw-alias-border-l1),var(--primary),var(--dsw-alias-border-l1))') >= 0);
+// 仪表盘统计卡四色：竖线（条目红 / 本周橙 / 今日绿 / 技能蓝）+ 浅色底 + 同色细边框
+ok('统计卡卡片框不加左边框', I.PANEL_STYLE.indexOf('.jk-kb-stat.jk-kb-card{padding:12px 14px;}') >= 0);
+ok('统计卡标签竖线 3px 且默认红色', I.PANEL_STYLE.indexOf('.jk-kb-stat .jk-kb-stat-label::before{content:"";display:inline-block;width:3px;height:10px;') >= 0
+  && I.PANEL_STYLE.indexOf('vertical-align:-1px;background:var(--destructive);}') >= 0);
+ok('统计卡 weekly 标签竖线橙（警示黄混红）', I.PANEL_STYLE.indexOf('.jk-kb-stat[data-jk-kb-stat="weekly"] .jk-kb-stat-label::before{background:var(--stat-orange);}') >= 0);
+ok('统计卡 today 标签竖线绿', I.PANEL_STYLE.indexOf('.jk-kb-stat[data-jk-kb-stat="today"] .jk-kb-stat-label::before{background:var(--success);}') >= 0);
+ok('统计卡 skills 标签竖线 info 蓝', I.PANEL_STYLE.indexOf('.jk-kb-stat[data-jk-kb-stat="skills"] .jk-kb-stat-label::before{background:var(--dsw-alias-button-info-fill);}') >= 0);
+ok('橙色令牌为固定 hsl 橙（宿主无警示/黄基色）', I.PANEL_STYLE.indexOf('--stat-orange:hsl(27 92% 52%);') >= 0);
+ok('统计卡 entries 浅红底+红边框', I.PANEL_STYLE.indexOf('.jk-kb-stat[data-jk-kb-stat="entries"]{background:color-mix(in srgb,var(--destructive) 8%,var(--card));border-color:var(--destructive);}') >= 0);
+ok('统计卡 weekly 浅橙底+橙边框', I.PANEL_STYLE.indexOf('.jk-kb-stat[data-jk-kb-stat="weekly"]{background:color-mix(in srgb,var(--stat-orange) 10%,var(--card));border-color:var(--stat-orange);}') >= 0);
+ok('统计卡 today 浅绿底+绿边框', I.PANEL_STYLE.indexOf('.jk-kb-stat[data-jk-kb-stat="today"]{background:color-mix(in srgb,var(--success) 8%,var(--card));border-color:var(--success);}') >= 0);
+ok('统计卡 skills 浅 info 蓝底+蓝边框', I.PANEL_STYLE.indexOf('.jk-kb-stat[data-jk-kb-stat="skills"]{background:color-mix(in srgb,var(--dsw-alias-button-info-fill) 8%,var(--card));border-color:var(--dsw-alias-button-info-fill);}') >= 0);
 
 // ───────────────────────────── 结果 ─────────────────────────────
 const total = passed + failures.length;

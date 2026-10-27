@@ -1017,6 +1017,22 @@ export function createRunService(deps) {
     return finishIfRunning(a, status, text || ('stopReason=' + String(result.stopReason === undefined ? 'unknown' : result.stopReason)));
   }
 
+  // 编排官「空跑」判定：正常结束（stopReason=completed）却没产生任何 step、也没有真实用量——
+  // 典型场景：模型路由存在但子代理立即返回（没调用任何 jk_kb_* 工具）。
+  // 此时若直接信任 completed 走强制验收，产出型 run 必然被判 failed；正确做法是降级为插件顺序执行。
+  function isEmptyAgentOutcome(a, stopReason, runOrActivation) {
+    if (!a || a.kind === 'verify') return false;
+    if (statusFromStopReason(stopReason) !== 'completed') return false;
+    if (collectAgentUsage(a, runOrActivation).usage) return false; // 有真实用量说明模型确实在跑
+    try {
+      const data = trace.readRun(a.root, a.runId);
+      const steps = data && Array.isArray(data.steps) ? data.steps : [];
+      return steps.filter((item) => item && item.title !== '验收（host 强制）').length === 0;
+    } catch (err) {
+      return false;
+    }
+  }
+
   async function runViaStart(a, subagents, provider, request) {
     let run = null;
     let phase = 'start';
@@ -1027,6 +1043,11 @@ export function createRunService(deps) {
       const collected = collectAgentUsage(a, run);
       a.usage = collected.usage;
       a.usageSource = collected.usageSource;
+      // 空跑兜底：run 仍是 running（未被收尾），降级执行会正常接管并收尾。
+      if (isEmptyAgentOutcome(a, outcome && outcome.stopReason, run)) {
+        await executeSequential(Object.assign({}, a, { reason: 'agent-empty', error: new Error('编排官未执行任何步骤（空跑），已降级为插件顺序执行') }));
+        return;
+      }
       await applyAgentOutcome(a, outcome);
     } catch (err) {
       if (phase === 'start') {
@@ -1059,6 +1080,11 @@ export function createRunService(deps) {
       const legacyCollected = collectAgentUsage(a, activation);
       a.usage = legacyCollected.usage;
       a.usageSource = legacyCollected.usageSource;
+      // 空跑兜底（同 runViaStart）：activation 正常返回但没干任何活 → 降级为插件顺序执行。
+      if (isEmptyAgentOutcome(a, failedByResult(result) ? 'failed' : 'completed', activation)) {
+        await executeSequential(Object.assign({}, a, { reason: 'agent-empty', error: new Error('编排官未执行任何步骤（空跑），已降级为插件顺序执行') }));
+        return;
+      }
       await finishIfRunning(a, failedByResult(result) ? 'failed' : 'completed', summaryOfResult(result));
     } catch (err) {
       await finishIfRunning(a, 'failed', String(err && err.message ? err.message : err));

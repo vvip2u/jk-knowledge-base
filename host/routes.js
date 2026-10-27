@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn as nodeSpawn } from 'node:child_process';
 
 import { describeErrno, hashAckText, PLUGIN_VERSION, RISK_ACK_TEXT, RISK_ACK_VERSION, createSettingsStore } from './config.js';
 import { evaluateRoot, getTopLevelDirs, hasVault, VAULT_DIR_NAME } from './root-policy.js';
@@ -63,6 +64,8 @@ export const ROUTE_PATHS = {
   ledgerDay: ROUTE_PREFIX + '/ledger/day',
   files: ROUTE_PREFIX + '/files',
   file: ROUTE_PREFIX + '/file',
+  fileSave: ROUTE_PREFIX + '/file/save',
+  fileReveal: ROUTE_PREFIX + '/file/reveal',
 };
 
 function requestUrl(req) {
@@ -154,6 +157,18 @@ async function readJson(req, res) {
   }
 }
 
+/**
+ * 打开文件所在目录并高亮该文件：按平台返回要执行的命令。
+ * darwin → open -R（Finder 打开所在目录并选中文件）；win32 → explorer /select,（资源管理器选中）；
+ * 其余平台退化 xdg-open 只开所在目录（Linux 各文件管理器选中语法不一，不保证高亮）。
+ */
+export function revealCommand(platform, absFile) {
+  const file = String(absFile == null ? '' : absFile);
+  if (platform === 'darwin') return { cmd: 'open', args: ['-R', file], highlighted: true };
+  if (platform === 'win32') return { cmd: 'explorer', args: ['/select,' + file], highlighted: true };
+  return { cmd: 'xdg-open', args: [path.dirname(file)], highlighted: false };
+}
+
 function probeWritable(root, io) {
   const fsi = io || fs;
   const file = path.join(root, '.jkkb-write-probe-' + process.pid + '-' + crypto.randomBytes(4).toString('hex') + '.tmp');
@@ -188,6 +203,9 @@ export function createHandlers(options) {
   const store = opts.store || createSettingsStore(opts);
   const connection = opts.connection;
   const io = opts.fs || fs;
+  // 系统命令起进程器与平台：默认真实 spawn + 当前平台，测试注入假实现断言参数。
+  const spawner = typeof opts.spawn === 'function' ? opts.spawn : nodeSpawn;
+  const platform = typeof opts.platform === 'string' ? opts.platform : process.platform;
   // 顶层目录真源：显式注入优先，否则向引擎预设投影（不在本文件复制目录名）。
   const injectedDirs = Array.isArray(opts.topLevelDirs) ? opts.topLevelDirs : null;
   const policyOptions = opts.policyOptions || {};
@@ -666,6 +684,55 @@ export function createHandlers(options) {
       }
     } catch (err) { lastReport = null; }
 
+    // 经营看板（可选业务数据）：从 vault 的 .jk-kb/dashboard-biz.json 读取，
+    // 战略布局 / 客资数据 / 订单数据 / 转化数据四个区块；缺文件或解析失败一律 null，
+    // 前端按占位渲染（知识库引擎本身不产生这些业务数据，由用户在文件里维护）。
+    // trend：客资粉丝趋势 / 订单金额趋势，[{label,value}] 序列，非法点过滤、最多 12 个。
+    let biz = { strategy: null, audience: null, orders: null, conversion: null };
+    try {
+      const bizPath = path.join(root, '.jk-kb', 'dashboard-biz.json');
+      if (io.existsSync(bizPath)) {
+        const rawBiz = JSON.parse(io.readFileSync(bizPath, 'utf8'));
+        const bizNum = (obj, key) => (obj && typeof obj === 'object' && Number.isFinite(obj[key]) ? obj[key] : null);
+        const bizStr = (obj, key) => (obj && typeof obj === 'object' && typeof obj[key] === 'string' && obj[key] ? obj[key] : null);
+        const bizTrend = (obj) => {
+          if (!obj || typeof obj !== 'object' || !Array.isArray(obj.trend)) return null;
+          return obj.trend
+            .map((point) => (point && typeof point === 'object'
+              ? {
+                  label: typeof point.label === 'string' && point.label ? point.label : '',
+                  value: Number.isFinite(point.value) ? point.value : null,
+                }
+              : null))
+            .filter((point) => point && point.value !== null)
+            .slice(0, 12);
+        };
+        biz = {
+          strategy: rawBiz && typeof rawBiz.strategy === 'object'
+            ? { milestone: bizStr(rawBiz.strategy, 'milestone'), progress: bizNum(rawBiz.strategy, 'progress') }
+            : null,
+          audience: rawBiz && typeof rawBiz.audience === 'object'
+            ? {
+                accounts: bizNum(rawBiz.audience, 'accounts'),
+                followers: bizNum(rawBiz.audience, 'followers'),
+                prospects: bizNum(rawBiz.audience, 'prospects'),
+                trend: bizTrend(rawBiz.audience),
+              }
+            : null,
+          orders: rawBiz && typeof rawBiz.orders === 'object'
+            ? {
+                deals: bizNum(rawBiz.orders, 'deals'),
+                amount: bizNum(rawBiz.orders, 'amount'),
+                trend: bizTrend(rawBiz.orders),
+              }
+            : null,
+          conversion: rawBiz && typeof rawBiz.conversion === 'object'
+            ? { wechatRate: bizNum(rawBiz.conversion, 'wechatRate'), dealRate: bizNum(rawBiz.conversion, 'dealRate') }
+            : null,
+        };
+      }
+    } catch (err) { /* 经营看板缺省回落 null */ }
+
     sendJson(res, 200, {
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -712,6 +779,7 @@ export function createHandlers(options) {
         subagents: subagentsInfo,
       },
       maintain: { lastReport: lastReport },
+      biz: biz,
     });
   }
 
@@ -1089,6 +1157,8 @@ export function createHandlers(options) {
   }
 
   const FILE_TEXT_EXTS = ['.md', '.markdown', '.txt', '.json', '.csv', '.log', '.yaml', '.yml', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.css', '.html', '.xml', '.ini', '.toml', '.env', '.sh', '.py'];
+  // 保存请求体上限：JSON 转义会放大体积（控制字符 / 引号），放宽到 8MB 传输、再按 utf8 字节精确卡 2MB。
+  const FILE_SAVE_MAX_BYTES = 8 * 1024 * 1024;
   const FILE_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'];
   const FILE_TEXT_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -1234,6 +1304,148 @@ export function createHandlers(options) {
       return;
     }
     sendJson(res, 200, Object.assign({ ok: true, kind: 'binary' }, base));
+  }
+
+  // POST /file/save —— 保存文本文件（编辑模式写回）。
+  // 约束与预览一致：路径必须落在 root 内、仅白名单文本扩展、仅已存在文件（不新建）、内容 ≤ 2MB。
+  async function fileSave(req, res) {
+    if (req.method !== 'POST') {
+      fail(res, 405, 'method-not-allowed', '仅支持 POST');
+      return;
+    }
+    const root = currentRoot();
+    if (!root) {
+      fail(res, 409, 'root-missing', '尚未配置知识库根目录');
+      return;
+    }
+    // JSON 包装有转义放大，先放宽传输上限，再用 utf8 字节数精确卡 2MB。
+    const raw = await readBody(req, FILE_SAVE_MAX_BYTES);
+    if (!raw.ok) {
+      fail(res, raw.status, raw.code, raw.message);
+      return;
+    }
+    let body = null;
+    try {
+      body = JSON.parse(raw.text);
+    } catch (err) {
+      body = null;
+    }
+    if (!body || typeof body !== 'object') {
+      fail(res, 400, 'invalid-json', '请求体不是合法 JSON 对象');
+      return;
+    }
+    const relPath = typeof body.path === 'string' ? body.path : '';
+    if (typeof body.content !== 'string') {
+      fail(res, 400, 'content-required', '缺少 content 字段');
+      return;
+    }
+    if (!relPath) {
+      fail(res, 400, 'path-required', '缺少 path 参数');
+      return;
+    }
+    const absFile = resolveInsideRoot(root, relPath);
+    if (!absFile) {
+      fail(res, 400, 'path-out-of-root', '文件路径超出知识库根目录范围');
+      return;
+    }
+    const ext = path.extname(absFile).toLowerCase();
+    if (FILE_TEXT_EXTS.indexOf(ext) < 0) {
+      fail(res, 415, 'ext-not-editable', '仅支持编辑文本类文件（.md / .txt 等）');
+      return;
+    }
+    let stats;
+    try { stats = io.statSync(absFile); } catch (err) { stats = null; }
+    if (!stats || !stats.isFile()) {
+      fail(res, 404, 'file-not-found', '文件不存在：' + relPath + '（暂不支持新建文件）');
+      return;
+    }
+    if (Buffer.byteLength(body.content, 'utf8') > FILE_TEXT_MAX_BYTES) {
+      fail(res, 413, 'content-too-large', '内容超过 2MB 保存上限');
+      return;
+    }
+    try {
+      io.writeFileSync(absFile, body.content, 'utf8');
+    } catch (err) {
+      fail(res, 500, 'file-write-failed', '文件写入失败：' + describeErrno(err));
+      return;
+    }
+    let after = { size: 0, mtimeMs: null };
+    try {
+      const st = io.statSync(absFile);
+      after = { size: typeof st.size === 'number' ? st.size : 0, mtimeMs: typeof st.mtimeMs === 'number' ? st.mtimeMs : null };
+    } catch (err) { /* 刚写完读不到就给默认值 */ }
+    sendJson(res, 200, {
+      ok: true,
+      saved: true,
+      path: relInsideRoot(root, absFile),
+      name: path.basename(absFile),
+      ext: ext,
+      size: after.size,
+      mtimeMs: after.mtimeMs,
+    });
+  }
+
+  // POST /file/reveal —— 在系统文件管理器中打开文件所在目录并高亮该文件。
+  // 约束与预览一致：路径必须落在 root 内、文件必须存在；命令按平台选择（见 revealCommand）。
+  async function fileReveal(req, res) {
+    if (req.method !== 'POST') {
+      fail(res, 405, 'method-not-allowed', '仅支持 POST');
+      return;
+    }
+    const root = currentRoot();
+    if (!root) {
+      fail(res, 409, 'root-missing', '尚未配置知识库根目录');
+      return;
+    }
+    const raw = await readBody(req, MAX_BODY_BYTES);
+    if (!raw.ok) {
+      fail(res, raw.status, raw.code, raw.message);
+      return;
+    }
+    let body = null;
+    try {
+      body = JSON.parse(raw.text);
+    } catch (err) {
+      body = null;
+    }
+    if (!body || typeof body !== 'object') {
+      fail(res, 400, 'invalid-json', '请求体不是合法 JSON 对象');
+      return;
+    }
+    const relPath = typeof body.path === 'string' ? body.path : '';
+    if (!relPath) {
+      fail(res, 400, 'path-required', '缺少 path 参数');
+      return;
+    }
+    const absFile = resolveInsideRoot(root, relPath);
+    if (!absFile) {
+      fail(res, 400, 'path-out-of-root', '文件路径超出知识库根目录范围');
+      return;
+    }
+    let stats;
+    try { stats = io.statSync(absFile); } catch (err) { stats = null; }
+    if (!stats || !stats.isFile()) {
+      fail(res, 404, 'file-not-found', '文件不存在：' + relPath);
+      return;
+    }
+    const command = revealCommand(platform, absFile);
+    try {
+      // detached + stdio ignore + unref：fire-and-forget，不阻塞请求也不留僵尸进程。
+      const child = spawner(command.cmd, command.args, { detached: true, stdio: 'ignore' });
+      if (child && typeof child.unref === 'function') child.unref();
+    } catch (err) {
+      fail(res, 500, 'reveal-failed', '打开所在目录失败：' + describeErrno(err));
+      return;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      revealed: true,
+      path: relInsideRoot(root, absFile),
+      name: path.basename(absFile),
+      highlighted: command.highlighted,
+      command: command.cmd,
+      platform: platform,
+    });
   }
 
   // GET /runs/:id、POST /runs/:id/cancel —— 用 prefix 路由，exact 不支持路径参数。
@@ -1393,6 +1605,8 @@ export function createHandlers(options) {
     ledgerDay: wrap(ledgerDay),
     filesList: wrap(filesList),
     fileEntry: wrap(fileEntry),
+    fileSave: wrap(fileSave),
+    fileReveal: wrap(fileReveal),
     runsScoped: wrap(runsScoped),
     startRun: wrap(startRun),
   };
@@ -1435,6 +1649,8 @@ export function registerRoutes(ctx, options) {
     registerOne(webServer, ROUTE_PATHS.ledgerDay, handlers.ledgerDay),
     registerOne(webServer, ROUTE_PATHS.files, handlers.filesList),
     registerOne(webServer, ROUTE_PATHS.file, handlers.fileEntry),
+    registerOne(webServer, ROUTE_PATHS.fileSave, handlers.fileSave),
+    registerOne(webServer, ROUTE_PATHS.fileReveal, handlers.fileReveal),
     registerOne(webServer, ROUTE_PATHS.runs, handlers.runsList),
     // exact 不支持路径参数：/runs/:id 与 /runs/:id/cancel 走 prefix 路由。
     registerPrefix(webServer, ROUTE_PATHS.runs, handlers.runsScoped),
